@@ -320,13 +320,14 @@ test('a snooze needs minutes between 1 and 720', async ($, on) => {
   await clock.advance(1_000)
 })
 
-test('on macOS the actions go to the macOS script, in its option style, one --arg for each argument', async ($, on) => {
-  const { runs, flag, seen, clock } = engine(on, 'Darwin')
+for (const [system, script] of [['Darwin', 'window-macos.sh'], ['Linux', 'window-linux.sh']] as const) {
+test(`${system}: the actions go to ${script}, in its option style, one --arg for each argument`, async ($, on) => {
+  const { runs, flag, seen, clock } = engine(on, system)
   await ready($)
   expect(await cmd($, 'open instagram')).toBe('Instagram Reels: done')
   const argv = runs.at(-1)!
   expect(argv[0]).toBe('bash')
-  expect(argv[1]!.endsWith('/scripts/window-macos.sh')).toBe(true)
+  expect(argv[1]!.endsWith(`/scripts/${script}`)).toBe(true)
   expect([flag(argv, 'action'), flag(argv, 'kind'), flag(argv, 'target'), flag(argv, 'profile')]).toEqual(['open', 'url', IG, '/home/test/.claude/downtime/profiles/instagram-reels'])
   expect(argv.some(x => x.startsWith('-') && !x.startsWith('--'))).toBe(false)
   expect(argv).not.toContain('powershell')
@@ -346,15 +347,14 @@ test('on macOS the actions go to the macOS script, in its option style, one --ar
   expect(seen()).toContain(`minimize:${IG}`)
   expect(seen()).toContain('minimize:/Applications/Music.app')
 })
-
-for (const system of ['Linux', 'FreeBSD'] as const) {
-  test(`${system}: a system whose script is not here yet says so instead of failing silently`, async ($, on) => {
-    const { runs } = engine(on, system)
-    await ready($)
-    expect(await cmd($, 'open instagram')).toMatch(/Not done: .*Windows and macOS only/)
-    expect(runs.length).toBe(0)
-  })
 }
+
+test('a system with no script says so instead of failing silently', async ($, on) => {
+  const { runs } = engine(on, 'FreeBSD')
+  await ready($)
+  expect(await cmd($, 'open instagram')).toMatch(/Not done: .*Windows, macOS and Linux only/)
+  expect(runs.length).toBe(0)
+})
 
 test('a permission asked of the user takes the windows down', async ($, on) => {
   const { clock, seen } = engine(on)

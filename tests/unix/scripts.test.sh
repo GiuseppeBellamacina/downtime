@@ -24,8 +24,31 @@ stub open ':'
 stub afplay ':'
 stub defaults 'echo Player'
 stub nohup 'exec "$@"'
-printf '#!/bin/sh\nprintf "%%s\\n" "${STUB_PS-}"\n' > "$STUBS/ps"; chmod +x "$STUBS/ps"
-printf '#!/bin/sh\nprintf "%%s\\n" "${STUB_PGREP-}"\n' > "$STUBS/pgrep"; chmod +x "$STUBS/pgrep"
+# ps answers with the process table, or (ps -o comm= -p PID) with the name of one process.
+cat > "$STUBS/ps" << 'EOF'
+#!/bin/sh
+if [ "$1" = -o ]; then
+  eval "printf '%s\n' \"\${STUB_COMM_$4-unknown}\""
+else
+  printf '%s\n' "${STUB_PS-}"
+fi
+EOF
+cat > "$STUBS/pgrep" << 'EOF'
+#!/bin/sh
+printf '%s\n' "${STUB_PGREP-}"
+EOF
+chmod +x "$STUBS/ps" "$STUBS/pgrep"
+
+# The Linux tools, and the browsers kept apart so that a test can leave them out.
+stub wmctrl 'printf "%s\n" "${STUB_WMCTRL-}"'
+stub xdotool ':'
+stub xdg-open ':'
+stub canberra-gtk-play ':'
+mkdir -p "$WORK/browsers"
+for b in microsoft-edge google-chrome brave-browser; do
+  printf '#!/bin/sh\n%s\n' "$LOGGER" > "$WORK/browsers/$b"
+  chmod +x "$WORK/browsers/$b"
+done
 
 # A program the script may start: it records the arguments it receives, one by one.
 printf '#!/bin/sh\n%s\n' "$LOGGER" > "$WORK/Player"; chmod +x "$WORK/Player"
@@ -41,8 +64,14 @@ lacks() { # lacks <label> <text> <fragment>
   case "$2" in *"$3"*) failed=$((failed + 1)); printf 'FAIL %s\n   want it not to contain: %s\n   got: %s\n' "$1" "$3" "$2" ;; *) passed=$((passed + 1)) ;; esac
 }
 calls() { cat "$STUB_LOG"; }
-fresh() { : > "$STUB_LOG"; unset STUB_OSA_FAIL STUB_PS STUB_PGREP; export STUB_OSA_COUNT=1 DOWNTIME_APP_DIRS="$WORK/apps"; }
+fresh() {
+  : > "$STUB_LOG"
+  unset STUB_OSA_FAIL STUB_PS STUB_PGREP STUB_WMCTRL
+  export STUB_OSA_COUNT=1 DOWNTIME_APP_DIRS="$WORK/apps" DISPLAY=:0 XDG_SESSION_TYPE=x11
+  export DOWNTIME_BIN_DIRS="$STUBS:$WORK/browsers"
+}
 mac() { PATH="$STUBS:$PATH" bash "$ROOT/scripts/window-macos.sh" "$@"; }
+linux() { PATH="$STUBS:$PATH" bash "$ROOT/scripts/window-linux.sh" "$@"; }
 
 PROFILE=/p/profiles/instagram
 EDGE_MAIN="  4242 /Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge --app=https://x.test --user-data-dir=$PROFILE --no-first-run"
@@ -151,6 +180,115 @@ check 'mac: place' "$(mac --action place --kind app --target "$WORK/Music.app")"
 check 'mac: unknown option' "$(mac --nope x)" 'error:unknown option --nope'
 check 'mac: an option without its value' "$(mac --action)" 'error:--action needs a value'
 check 'mac: unknown action' "$(mac --action dance --kind url)" 'error:unknown action: dance'
+
+# ---- Linux ----------------------------------------------------------------------------------------------
+only_tools() { # only_tools <dirs>: where the script may look for programs (a test leaves some out)
+  export DOWNTIME_BIN_DIRS="$1"
+}
+settle() { sleep 1; }   # a program started in the background has logged its arguments by then
+
+fresh
+check 'linux: chime' "$(linux --action chime)" 'ok:chime'
+has 'linux: chime plays the bell' "$(calls)" 'canberra-gtk-play [-i] [bell]'
+
+# Starting a web page
+fresh
+only_tools "$STUBS"
+check 'linux: no browser installed' "$(linux --action open --kind url --target https://x.test --profile $PROFILE)" 'error:could not start Edge or Chrome: is it installed?'
+fresh
+check 'linux: open a page' "$(linux --action open --kind url --target https://x.test --profile $PROFILE)" 'ok:opened'
+settle
+has 'linux: Edge, its own profile' "$(calls)" 'microsoft-edge [--app=https://x.test] [--user-data-dir=/p/profiles/instagram] [--no-first-run] [--no-default-browser-check]'
+fresh
+rm "$WORK/browsers/microsoft-edge"
+linux --action open --kind url --target https://x.test --profile $PROFILE > /dev/null
+settle
+has 'linux: Chrome when Edge is missing' "$(calls)" 'google-chrome [--app=https://x.test]'
+fresh
+check 'linux: a browser that is named is the only one tried' "$(linux --action open --kind url --target https://x.test --profile $PROFILE --browser edge)" 'error:could not start edge: is it installed?'
+linux --action open --kind url --target https://x.test --profile $PROFILE --browser brave > /dev/null
+settle
+has 'linux: Brave when named' "$(calls)" 'brave-browser [--app=https://x.test]'
+
+# Windows on X11
+fresh
+export STUB_PS="$EDGE_MAIN
+$EDGE_HELPER
+$OTHER_PROFILE"
+export STUB_WMCTRL="0x01c00003  0 4242 host Instagram
+0x01c00004  0 4243 host Helper of the same profile
+0x01c00005  0 4300 host Another activity"
+check 'linux: already open' "$(linux --action open --kind url --target https://x.test --profile $PROFILE)" 'ok:already open'
+log=$(calls)
+has 'linux: its window is brought back' "$log" 'xdotool [windowactivate] [0x01c00003]'
+lacks 'linux: a helper process is left out' "$log" '0x01c00004'
+lacks 'linux: another profile with the same start is left out' "$log" '0x01c00005'
+lacks 'linux: nothing is started' "$log" 'microsoft-edge'
+check 'linux: minimize' "$(linux --action minimize --kind url --target https://x.test --profile $PROFILE)" 'ok:minimized 1'
+has 'linux: only its window goes down' "$(calls)" 'xdotool [windowminimize] [0x01c00003]'
+check 'linux: restore' "$(linux --action restore --kind url --target https://x.test --profile $PROFILE)" 'ok:restored 1'
+fresh
+check 'linux: minimize with nothing open' "$(linux --action minimize --kind url --target https://x.test --profile $PROFILE)" 'ok:minimized 0'
+
+# A document: found by its title, never in the editor or a terminal
+fresh
+DOC=$WORK/contract.pdf
+export STUB_WMCTRL="0x02000001  0 7000 host contract.pdf - Document Viewer
+0x02000002  0 7100 host contract.pdf - Visual Studio Code
+0x02000003  0 7200 host Something else"
+export STUB_COMM_7000=evince STUB_COMM_7100=code STUB_COMM_7200=evince
+check 'linux: minimize a document' "$(linux --action minimize --kind file --target "$DOC" --match contract)" 'ok:minimized 1'
+log=$(calls)
+has 'linux: the viewer goes down' "$log" 'xdotool [windowminimize] [0x02000001]'
+lacks 'linux: the editor is never touched' "$log" '0x02000002'
+lacks 'linux: other windows are not touched' "$log" '0x02000003'
+check 'linux: a document needs a title to be found by' "$(linux --action minimize --kind file --target "$DOC")" 'error:this document has no text to find its window by'
+fresh
+: > "$DOC"
+check 'linux: open a document' "$(linux --action open --kind file --target "$DOC" --match contract)" 'ok:opened'
+settle
+has 'linux: opened by the system' "$(calls)" "xdg-open [$DOC]"
+check 'linux: no such file' "$(linux --action open --kind file --target "$WORK/none.pdf" --match none)" "error:no such file: $WORK/none.pdf"
+check 'linux: a folder is no document' "$(linux --action open --kind file --target "$WORK" --match x)" 'error:that is a program or a folder, not a document: use an application'
+check 'linux: a program is no document' "$(linux --action open --kind file --target "$WORK/runme" --match runme)" 'error:that is a program or a folder, not a document: use an application'
+only_tools "$WORK/browsers"
+check 'linux: a document needs xdg-open' "$(linux --action open --kind file --target "$DOC" --match contract)" 'error:opening a document needs xdg-open: install xdg-utils'
+
+# An application
+fresh
+check 'linux: open a program' "$(linux --action open --kind app --target "$WORK/Player" --arg --flag --arg 'a b' --arg '$(whoami)' --arg '; rm -rf /')" 'ok:opened'
+settle
+has 'linux: arguments reach a program as written, nothing is read as a command' "$(calls)" 'Player [--flag] [a b] [$(whoami)] [; rm -rf /]'
+check 'linux: no such program' "$(linux --action open --kind app --target "$WORK/nothing")" "error:no such program: $WORK/nothing"
+check 'linux: a terminal is refused' "$(linux --action open --kind app --target /usr/bin/gnome-terminal)" 'error:that program is the window you work in: refused'
+check 'linux: a shell is refused' "$(linux --action open --kind app --target /bin/bash)" 'error:that program is the window you work in: refused'
+fresh
+export STUB_PGREP=5150
+export STUB_WMCTRL="0x03000001  0 5150 host Music Library
+0x03000002  0 5150 host Music Mini"
+check 'linux: an app is found by its process' "$(linux --action minimize --kind app --target "$WORK/Music")" 'ok:minimized 2'
+check 'linux: and narrowed by title' "$(linux --action minimize --kind app --target "$WORK/Music" --match Library)" 'ok:minimized 1'
+
+# Where windows cannot be reached
+fresh
+export XDG_SESSION_TYPE=wayland STUB_PS="$EDGE_MAIN"
+check 'linux: Wayland cannot minimize' "$(linux --action minimize --kind url --target https://x.test --profile $PROFILE)" "error:Wayland does not let a program minimize or restore another program's window (opening works)"
+check 'linux: on Wayland a running program counts as open' "$(linux --action open --kind url --target https://x.test --profile $PROFILE)" "ok:already open (Wayland does not let a program minimize or restore another program's window (opening works))"
+unset STUB_PS
+check 'linux: on Wayland a program that is not running is started' "$(linux --action open --kind url --target https://x.test --profile $PROFILE)" 'ok:opened'
+fresh
+unset DISPLAY
+check 'linux: no desktop session' "$(linux --action minimize --kind url --target https://x.test --profile $PROFILE)" 'error:there is no desktop session to talk to (DISPLAY is not set)'
+fresh
+only_tools "$WORK/browsers"
+has 'linux: missing tools are named' "$(linux --action minimize --kind url --target https://x.test --profile $PROFILE)" 'error:it needs wmctrl and xdotool: install them (for example: sudo apt install wmctrl xdotool)'
+
+fresh
+has 'linux: a position is said not to be supported' "$(linux --action open --kind app --target "$WORK/Player" --position left)" 'ok:opened (a position is not supported on Linux yet)'
+check 'linux: place' "$(linux --action place --kind app --target "$WORK/Player")" 'error:placing a window is not supported on Linux yet'
+check 'linux: unknown option' "$(linux --nope x)" 'error:unknown option --nope'
+check 'linux: an option without its value' "$(linux --action)" 'error:--action needs a value'
+check 'linux: unknown action' "$(linux --action dance --kind url)" 'error:unknown action: dance'
 
 printf '%s passed, %s failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
