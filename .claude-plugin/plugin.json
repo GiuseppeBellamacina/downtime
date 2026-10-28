@@ -1,7 +1,7 @@
 {
   "name": "downtime",
   "displayName": "Downtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "While Claude works, opens the windows you chose (a feed, a film, a PDF) and minimizes them when Claude needs you or is done. Claude can open and minimize them on request.",
   "author": {
     "name": "Giuseppe Bellamacina",

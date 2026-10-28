@@ -1,0 +1,16 @@
+# Changelog
+
+## 0.2.0
+
+- **The command is `/dt`.** Claude Code ships a command called `/downtime`, so 0.1.0 could not register its command at all (the validator only warned). The plugin and the tool keep the name `downtime`.
+- **`/dt snooze`**: nothing opens by itself for a while.
+- **A browser for each web page**: `edge`, `chrome` or `brave`, with `/dt browser`.
+- **Position**: a side of a monitor or a rectangle, with `/dt position` and `/dt place`.
+- **Applications** (`/dt add-app`, `/dt confirm`): a program you list yourself, never run until you confirmed that exact command, and Claude Code asks every time Claude wants to open one.
+- **macOS and Linux**, experimental: written and tested against stand-ins for the system tools, not yet tried on real machines.
+- **Fixed**: a web activity could minimize the windows of another whose id starts the same (`instagram` and `instagram-2`); an empty argument could vanish from the command line.
+- **Checks**: CI on Windows, Ubuntu and macOS, including tests that open and measure real windows.
+
+## 0.1.0
+
+The first version: activities that open while Claude works and go down when it needs you, Claude's `window` tool, Windows only.
