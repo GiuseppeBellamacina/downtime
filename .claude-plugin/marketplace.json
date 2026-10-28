@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "downtime",
+  "description": "Downtime: windows to keep at hand while Claude works.",
+  "owner": {
+    "name": "Giuseppe Bellamacina",
+    "url": "https://github.com/GiuseppeBellamacina"
+  },
+  "plugins": [
+    {
+      "name": "downtime",
+      "description": "While Claude works, opens the windows you chose (a feed, a film, a PDF) and minimizes them when Claude needs you or is done.",
+      "source": "./",
+      "category": "productivity",
+      "keywords": ["downtime", "windows", "waiting", "background", "mod"]
+    }
+  ]
+}
