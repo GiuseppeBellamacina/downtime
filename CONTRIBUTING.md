@@ -7,6 +7,7 @@
 - `scripts/window.ps1`: the Windows side. One entry point, `-Action open|minimize|restore|place|chime`.
 - `scripts/window-macos.sh` and `scripts/window-macos.applescript`: the macOS side, the same contract with `--action` style options.
 - `scripts/window-linux.sh`: the Linux side (X11 through `wmctrl` and `xdotool`; Wayland says what it cannot do).
+- `tests/windows/window.test.ps1`: tries `window.ps1` on real windows (Notepad and Edge) and measures them; it cleans up after itself.
 - `tests/unix/scripts.test.sh`: tries the macOS and Linux scripts against stand-ins for the system tools; runs anywhere with bash.
 - `types/index.d.ts`: the contract of the plugin's state.
 - `tests/`: `activities.test.ts` (the rules) and `hooks.test.tsx` (the events, with a mock engine).
@@ -29,7 +30,7 @@ claude plugin test ./downtime
 claude --plugin-dir ./downtime      # try it in a session
 ```
 
-The tests cover the rules and the events (`tests/unix/scripts.test.sh` the macOS and Linux scripts: `bash tests/unix/scripts.test.sh`). The window handling is tried by hand with a harmless activity:
+The tests cover the rules and the events. The scripts have their own: `bash tests/unix/scripts.test.sh` for macOS and Linux (against stand-ins for the system tools, anywhere with bash), and `powershell -ExecutionPolicy Bypass -File tests/windows/window.test.ps1` for Windows. The Windows one opens and closes real windows (a throwaway document and program in Notepad, two web pages in Edge profiles of their own), measures where they are, and leaves nothing running; it skips the Notepad checks if a Notepad is already open, so as never to touch a window it did not open. The window handling is tried by hand with a harmless activity:
 
 ```text
 /dt add "Note" C:\path\to\a\note.txt
@@ -52,7 +53,7 @@ The tests cover the rules and the events (`tests/unix/scripts.test.sh` the macOS
 `.github/workflows/ci.yml` runs on every push to `main` and on every pull request. On Windows (the supported system) it:
 
 1. fails if a `classic.*` hook shows up in `hooks/`;
-2. checks that `scripts/window.ps1` parses;
+2. checks that `scripts/window.ps1` parses and runs `tests/windows/window.test.ps1` on the runner's desktop;
 3. installs the Claude Code CLI (`npm install -g @anthropic-ai/claude-code`), runs `claude plugin validate .` and fails if it says a command name is one Claude Code ships (that is only a warning, but the command would never be registered), then runs `claude plugin test .`.
 
 The same checks run on your machine with the commands under "Develop".
