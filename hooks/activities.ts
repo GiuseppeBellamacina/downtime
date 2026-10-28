@@ -16,6 +16,9 @@ export const STALE_TASK_MS = 30 * 60_000
 /** The browsers that take --app= and --user-data-dir=: a fixed list, never a path or a command. */
 export const BROWSERS = ['edge', 'chrome', 'brave'] as const
 
+/** The sides of a monitor's work area a window can take (`full` is all of it). */
+export const SIDES = ['left', 'right', 'top', 'bottom', 'full'] as const
+
 const ID = /^[a-z0-9][a-z0-9-]{0,31}$/
 const CONTROL = /[\u0000-\u001f]/
 // A document, never a program: opening these would run them.
@@ -34,7 +37,7 @@ export const slug = (name: string) =>
 export function check(value: unknown): Activity | string {
   const a = value as Record<string, unknown> | null
   if (!a || typeof a !== 'object') return 'not an activity'
-  const { id, name, kind, target, match, browser } = a
+  const { id, name, kind, target, match, browser, position, monitor } = a
   if (typeof id !== 'string' || !ID.test(id)) return 'the id must be a-z, 0-9 and dashes (at most 32)'
   if (typeof name !== 'string' || !name.trim() || name.length > 60 || CONTROL.test(name)) return `${id}: the name must be 1 to 60 characters`
   if (kind !== 'url' && kind !== 'file') return `${id}: kind must be "url" or "file"`
@@ -48,6 +51,19 @@ export function check(value: unknown): Activity | string {
   if (browser !== undefined && (kind !== 'url' || !(BROWSERS as readonly unknown[]).includes(browser))) {
     return `${id}: "browser" is for web pages and one of ${BROWSERS.join(', ')}`
   }
+  let place: Activity['position']
+  if (position !== undefined) {
+    const rect = position as Record<string, unknown> | null
+    if (typeof position === 'string' && (SIDES as readonly string[]).includes(position)) place = position as (typeof SIDES)[number]
+    else if (rect && typeof rect === 'object' && Number.isInteger(rect.x) && Number.isInteger(rect.y) && Number.isInteger(rect.width) && Number.isInteger(rect.height)) {
+      const [x, y, width, height] = [rect.x, rect.y, rect.width, rect.height] as number[]
+      if (Math.abs(x!) > 32000 || Math.abs(y!) > 32000 || width! < 100 || width! > 16000 || height! < 100 || height! > 16000) return `${id}: the position is outside what a screen can be`
+      place = { x: x!, y: y!, width: width!, height: height! }
+    } else return `${id}: "position" is ${SIDES.join(', ')} or { x, y, width, height } in pixels`
+  }
+  if (monitor !== undefined && (typeof place !== 'string' || !Number.isInteger(monitor) || (monitor as number) < 1 || (monitor as number) > 8)) {
+    return `${id}: "monitor" is a number from 1 to 8, and goes with a position that is a side`
+  }
   return {
     id,
     name: name.trim(),
@@ -55,6 +71,8 @@ export function check(value: unknown): Activity | string {
     target,
     ...(typeof match === 'string' && match ? { match } : {}),
     ...(browser ? { browser: browser as (typeof BROWSERS)[number] } : {}),
+    ...(place ? { position: place } : {}),
+    ...(monitor ? { monitor: monitor as number } : {}),
   }
 }
 
@@ -117,10 +135,35 @@ export function matchOf(a: Activity): string {
   return dot > 0 ? file.slice(0, dot) : file
 }
 
-export type Action = 'open' | 'minimize' | 'restore' | 'chime'
+export type Action = 'open' | 'minimize' | 'restore' | 'place' | 'chime'
+
+/** The position as the script reads it: a side, or "x,y,width,height". */
+export const positionArg = (p: NonNullable<Activity['position']>): string => (typeof p === 'string' ? p : `${p.x},${p.y},${p.width},${p.height}`)
+
+/** For a list: "left", "right on monitor 2", "100,50 800x600". */
+export function describePosition(a: Activity): string {
+  const p = a.position
+  if (!p) return ''
+  return typeof p === 'string' ? (a.monitor ? `${p} on monitor ${a.monitor}` : p) : `${p.x},${p.y} ${p.width}x${p.height}`
+}
+
+/** "left", "right 2", "100,50,800,600": what the user types for a position, as the activity's fields (`check` judges them). */
+export function parsePosition(args: string[]): Pick<Activity, 'position' | 'monitor'> {
+  const [where = '', monitor] = args
+  const rect = /^(-?\d+),(-?\d+),(\d+),(\d+)$/.exec(where)
+  const position = rect ? { x: Number(rect[1]), y: Number(rect[2]), width: Number(rect[3]), height: Number(rect[4]) } : (where.toLowerCase() as Activity['position'])
+  return monitor === undefined ? { position } : { position, monitor: Number(monitor) }
+}
 
 /** The whole command line for scripts/window.ps1: an argument vector, no shell reads any of it. */
 export function launcher(action: Action, a: Activity | undefined, script: string, profileDir: string): string[] {
   const base = ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Action', action]
-  return a ? [...base, '-Kind', a.kind, '-Target', a.target, '-Match', matchOf(a), '-Profile', profileDir, ...(a.browser ? ['-Browser', a.browser] : [])] : base
+  if (!a) return base
+  return [
+    ...base,
+    '-Kind', a.kind, '-Target', a.target, '-Match', matchOf(a), '-Profile', profileDir,
+    ...(a.browser ? ['-Browser', a.browser] : []),
+    ...(a.position ? ['-Position', positionArg(a.position)] : []),
+    ...(a.monitor ? ['-Monitor', String(a.monitor)] : []),
+  ]
 }

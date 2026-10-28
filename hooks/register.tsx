@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Activity, Busy, DowntimeSettings } from '../types'
-import { BROWSERS, DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, find, isBusy, launcher, parseActivities, shouldShow, slug, words } from './activities'
+import { BROWSERS, DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, describePosition, find, parsePosition, isBusy, launcher, parseActivities, shouldShow, slug, words } from './activities'
 import type { Action } from './activities'
 
 const PANE = 'downtime'
@@ -153,10 +153,10 @@ async function settle($: EngineInterface) {
 
 // ---- Claude's tool and the /dt command ----------------------------------------------------
 
-async function act($: EngineInterface, action: 'open' | 'minimize' | 'restore', a: Activity): Promise<string> {
+async function act($: EngineInterface, action: 'open' | 'minimize' | 'restore' | 'place', a: Activity): Promise<string> {
   const r = await exec($, action, a)
   if (!r.ok) return `Not done: ${a.name}: ${r.text}`
-  if (action !== 'minimize') await setBusy($, b => ({ ...b, shown: true }))
+  if (action === 'open' || action === 'restore') await setBusy($, b => ({ ...b, shown: true }))
   return `${a.name}: ${r.text}`
 }
 
@@ -205,6 +205,8 @@ const HELP = [
   '/dt delay <seconds>        how long Claude works before they open',
   '/dt snooze <minutes> | off   nothing opens by itself for a while',
   '/dt browser <id> edge | chrome | brave | default   which browser a web page uses',
+  '/dt position <id> left | right | top | bottom | full [monitor] | x,y,width,height | none   where its window opens',
+  '/dt place <id>                   put its open window there now',
   '/dt open | minimize | restore <id>   try one by hand',
   '/dt reload                 read activities.json again',
 ].join('\n')
@@ -226,7 +228,7 @@ async function command($: EngineInterface, args: string): Promise<string> {
       await changeSettings($, x => ({ ...x, enabled: verb.toLowerCase() === 'on' }))
       return `downtime is ${verb.toLowerCase()}.`
     case 'list':
-      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.target}${a.browser ? `, ${a.browser}` : ''})`).join('\n') || 'No activities yet: /dt add "Name" <address or path>.')
+      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.target}${a.browser ? `, ${a.browser}` : ''}${a.position ? `, ${describePosition(a)}` : ''})`).join('\n') || 'No activities yet: /dt add "Name" <address or path>.')
     case 'add':
       return rest.length < 2 ? 'Usage: /dt add "Name" <address or full path> ["window title"]' : addActivity($, rest[0]!, rest[1]!, rest[2])
     case 'remove': {
@@ -258,6 +260,20 @@ async function command($: EngineInterface, args: string): Promise<string> {
       if (typeof made === 'string') return `Not changed: ${made}`
       await saveActivities($, list.map(x => (x.id === a.id ? made : x)))
       return choice === 'default' ? `${a.name} opens in Edge, or Chrome if Edge is missing.` : `${a.name} opens in ${choice}.`
+    }
+    case 'position': {
+      const a = one(rest[0])
+      if (typeof a === 'string') return a
+      if (rest.length < 2) return 'Usage: /dt position <id> left | right | top | bottom | full [monitor] | x,y,width,height | none'
+      const { position: _p, monitor: _m, ...plain } = a
+      const made = check(rest[1]!.toLowerCase() === 'none' ? plain : { ...plain, ...parsePosition(rest.slice(1)) })
+      if (typeof made === 'string') return `Not changed: ${made}`
+      await saveActivities($, list.map(x => (x.id === a.id ? made : x)))
+      return made.position ? `${a.name} opens ${describePosition(made)}.` : `${a.name} opens where the system puts it.`
+    }
+    case 'place': {
+      const a = one(rest[0])
+      return typeof a === 'string' ? a : a.position ? act($, 'place', a) : `${a.name} has no position: /dt position ${a.id} left, for example.`
     }
     case 'snooze':
       return snooze($, rest[0]?.toLowerCase())

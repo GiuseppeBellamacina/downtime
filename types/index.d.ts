@@ -10,6 +10,13 @@ export type Activity = {
   match?: string
   /** For a web page: the browser to use (default: Edge, else Chrome). */
   browser?: 'edge' | 'chrome' | 'brave'
+  /**
+   * Where the window goes when it opens: a half of a monitor's work area (`full` is all of it), or an exact
+   * rectangle in screen pixels. Without it the window opens where the system puts it.
+   */
+  position?: 'left' | 'right' | 'top' | 'bottom' | 'full' | { x: number; y: number; width: number; height: number }
+  /** For a `position` that is a side: which monitor, 1 being the main one (default 1). */
+  monitor?: number
 }
 
 export type DowntimeSettings = {

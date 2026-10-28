@@ -159,6 +159,32 @@ test('a web page opens in the browser the user chose, and goes back to the defau
   expect(await cmd($, 'browser note chrome')).toBe('Note is a document: a browser applies to web pages only.')
 })
 
+test('a position is set by command, goes to the script, and can be reapplied or removed', async ($, on) => {
+  const { runs } = engine(on)
+  await ready($)
+  const last = () => runs.at(-1)!
+  const arg = (name: string) => (last().includes(name) ? last()[last().indexOf(name) + 1] : undefined)
+
+  expect(await cmd($, 'place instagram')).toMatch(/has no position: \/dt position instagram-reels left/)
+  expect(await cmd($, 'position instagram right 2')).toBe('Instagram Reels opens right on monitor 2.')
+  await cmd($, 'open instagram')
+  expect([arg('-Action'), arg('-Position'), arg('-Monitor')]).toEqual(['open', 'right', '2'])
+  expect(await cmd($, 'place instagram')).toBe('Instagram Reels: done')
+  expect(arg('-Action')).toBe('place')
+  expect(await cmd($, 'list')).toMatch(/, right on monitor 2\)/)
+
+  expect(await cmd($, 'position instagram 100,50,800,600')).toBe('Instagram Reels opens 100,50 800x600.')
+  await cmd($, 'open instagram')
+  expect([arg('-Position'), arg('-Monitor')]).toEqual(['100,50,800,600', undefined])
+
+  for (const bad of ['middle', 'left 0', 'left 9', '5,5,20,20']) expect(await cmd($, `position instagram ${bad}`)).toMatch(/^Not changed: /)
+  expect(await cmd($, 'position instagram')).toMatch(/^Usage: \/dt position/)
+
+  expect(await cmd($, 'position instagram none')).toBe('Instagram Reels opens where the system puts it.')
+  await cmd($, 'open instagram')
+  expect(arg('-Position')).toBeUndefined()
+})
+
 test('a snooze holds the automatic opening back, leaves open windows alone, and ends when asked or when it runs out', async ($, on) => {
   const { runs, clock, seen } = engine(on)
   await ready($)

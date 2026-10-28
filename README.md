@@ -68,6 +68,8 @@ The command is **`/dt`**, short for downtime: Claude Code reserves the name `/do
 | `/dt snooze <minutes>` · `snooze off` · `snooze` | Nothing opens by itself for 1–720 minutes (a call, a meeting). Windows already open are left alone. `snooze` alone says if one is running. A snooze does not outlive the session. |
 | `/dt open <id>` · `minimize <id>` · `restore <id>` | Try one by hand. They work whether or not it is switched on. `restore` only brings back a window that is already open. |
 | `/dt browser <id> edge \| chrome \| brave \| default` | Which browser a web page opens in. A browser that is not installed gives a clear error. |
+| `/dt position <id> left \| right \| top \| bottom \| full [monitor]` · `<id> x,y,width,height` · `<id> none` | Where the window goes when it opens: a half (or all) of a monitor's work area, taskbar excluded, or an exact rectangle in screen pixels. Monitor 1 is the main one, the others follow from left to right. |
+| `/dt place <id>` | Puts the open window of an activity on its position now. |
 | `/dt remove <id>` | Removes an activity. |
 | `/dt reload` | Reads `activities.json` again after you edited it. |
 | `/dt help` | Lists these commands. |
@@ -92,6 +94,8 @@ They live in `~/.claude/downtime/activities.json`, which you can edit by hand (t
 | `kind` | `url`: a web page, in its own browser window (Edge, Chrome or Brave). `file`: a document, in its default app. |
 | `target` | An `http(s)` address, or the full path of a document. |
 | `match` | Optional, for a `file`: text its window title contains (default: the file's name without the extension). |
+| `position` | Optional: `left`, `right`, `top`, `bottom` or `full`, or `{ "x": 0, "y": 0, "width": 800, "height": 600 }` in screen pixels. Applied when the window opens; set it with `/dt position`. |
+| `monitor` | Optional, with a side as `position`: 1 to 8, 1 being the main monitor (default 1). |
 | `browser` | Optional, for a `url`: `edge`, `chrome` or `brave` (default: Edge, else Chrome). A fixed list: never a path or a command. Set it with `/dt browser <id> <name>`. |
 
 - A **web page** gets a browser profile of its own in `~/.claude/downtime/profiles/<id>`. Log in once, in that window: the browser keeps it. No password or cookie ever passes through the plugin.
@@ -119,8 +123,8 @@ A short answer opens nothing and says nothing. A background task whose end is ne
 
 All the window handling is [`scripts/window.ps1`](scripts/window.ps1), about a hundred readable lines. It:
 
-- reads window titles and the command lines of Edge and Chrome processes, to find the windows of an activity;
-- minimizes and restores those windows, and starts the browser or the document's app;
+- reads window titles and the command lines of browser processes, to find the windows of an activity, and the size of your monitors;
+- moves, minimizes and restores those windows, and starts the browser or the document's app;
 - plays a system sound.
 
 It writes no file, opens no network connection, never touches the window of VS Code, a terminal or Claude, and every value reaches it as a separate argument (no shell ever interprets any text). The plugin itself writes `activities.json` and nothing else outside Claude Code's own plugin store.
@@ -128,6 +132,7 @@ It writes no file, opens no network connection, never touches the window of VS C
 ## Limits
 
 - **Windows only.** On other systems the commands say so instead of failing silently.
+- A window is placed only when it opens; reopening a minimized window leaves it where you put it. Placement is exact with display scaling (tried at 125%); several monitors and mixed scaling have not been tried yet.
 - A verification a site asks for (2FA, captcha) is yours to do in its window.
 - A document's window is found by its title: a viewer that does not show the file name there is not found; use the `match` field.
 - Closing the window of a web activity leaves the browser's own background processes running: normal for Edge and Chrome.

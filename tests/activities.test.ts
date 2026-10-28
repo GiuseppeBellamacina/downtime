@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, EMPTY_BUSY, STALE_TASK_MS, check, find, isBusy, launcher, matchOf, parseActivities, shouldShow, slug, words } from '../hooks/activities'
+import { DEFAULTS, EMPTY_BUSY, STALE_TASK_MS, check, describePosition, find, isBusy, launcher, matchOf, parseActivities, parsePosition, shouldShow, slug, words } from '../hooks/activities'
 
 const ig = { id: 'ig', name: 'Instagram Reels', kind: 'url', target: 'https://www.instagram.com/reels/' } as const
 const pdf = { id: 'pdf', name: 'Contratto', kind: 'file', target: 'C:\\Users\\me\\Documents\\contratto.pdf' } as const
@@ -27,6 +27,27 @@ test('a browser is one of a fixed list and only for web pages', async () => {
   // The command line carries it only when it is set.
   expect(launcher('open', { ...ig, browser: 'brave' }, 'S.ps1', 'P').slice(-2)).toEqual(['-Browser', 'brave'])
   expect(launcher('open', ig, 'S.ps1', 'P')).not.toContain('-Browser')
+})
+
+test('a position is a side of a monitor or a rectangle on screen, and a monitor goes with a side', async () => {
+  expect(check({ ...ig, position: 'left' })).toEqual({ ...ig, position: 'left' })
+  expect(check({ ...ig, position: 'right', monitor: 2 })).toEqual({ ...ig, position: 'right', monitor: 2 })
+  const rect = { x: -1200, y: 40, width: 800, height: 600 }
+  expect(check({ ...pdf, position: rect })).toEqual({ ...pdf, position: rect })
+  for (const bad of ['middle', 'LEFT', 5, { x: 1, y: 2, width: 800 }, { x: 1.5, y: 2, width: 800, height: 600 }, { x: 0, y: 0, width: 50, height: 600 }, { x: 99999, y: 0, width: 800, height: 600 }]) {
+    expect(typeof check({ ...ig, position: bad })).toBe('string')
+  }
+  for (const bad of [0, 9, 1.5, '2']) expect(typeof check({ ...ig, position: 'left', monitor: bad })).toBe('string')
+  expect(typeof check({ ...ig, monitor: 2 })).toBe('string')
+  expect(typeof check({ ...ig, position: rect, monitor: 2 })).toBe('string')
+  expect(parsePosition(['LEFT', '2'])).toEqual({ position: 'left', monitor: 2 })
+  expect(parsePosition(['100,50,800,600'])).toEqual({ position: { x: 100, y: 50, width: 800, height: 600 } })
+  expect(describePosition({ ...ig, position: 'right', monitor: 2 })).toBe('right on monitor 2')
+  expect(describePosition({ ...ig, position: rect })).toBe('-1200,40 800x600')
+  const argv = launcher('open', { ...ig, position: 'right', monitor: 2 }, 'S.ps1', 'P')
+  expect(argv.slice(-4)).toEqual(['-Position', 'right', '-Monitor', '2'])
+  expect(launcher('open', { ...ig, position: rect }, 'S.ps1', 'P').slice(-2)).toEqual(['-Position', '-1200,40,800,600'])
+  expect(launcher('open', ig, 'S.ps1', 'P')).not.toContain('-Position')
 })
 
 test('a bad entry of the file is dropped with its reason, the others stay', async () => {
