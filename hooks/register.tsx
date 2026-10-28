@@ -45,8 +45,15 @@ function serial<T>(fn: () => Promise<T>): Promise<T> {
   return run
 }
 
+/** What the plugin saw lately, for `/dt log`: a failed opening or a timer that never ran leaves no other trace. */
+const trace: string[] = []
+const note = (text: string) => {
+  trace.push(`${new Date().toTimeString().slice(0, 8)} ${text}`)
+  if (trace.length > 60) trace.shift()
+}
+
 /** Work that must not hold up a hook (a permission prompt waits for hooks): started from a timer, it outlives the dispatch. */
-const later = ($: EngineInterface, ms: number, fn: () => Promise<unknown>) => $.clock.after(ms, () => void fn().catch(() => undefined))
+const later = ($: EngineInterface, ms: number, fn: () => Promise<unknown>) => $.clock.after(ms, () => void fn().catch(err => note(`timer failed: ${String(err)}`)))
 
 const setBusy = ($: EngineInterface, fn: (b: Busy) => Busy) => update($, busyA, fn)
 const say = ($: EngineInterface, text: string | null) => update($, messageA, () => text)
@@ -134,12 +141,13 @@ async function exec($: EngineInterface, action: Action, a?: Activity): Promise<R
   const argv = launcher(action, a, `${$.plugin.root}/scripts/${SCRIPTS[system]}`, `${await dirOf($)}/profiles/${a?.id ?? ''}`, system)
   const run = await serial(() => $.process.run(argv, { timeoutMs: 25_000 })).catch(err => ({ exitCode: 1, stdout: '', stderr: String(err) }))
   const line = run.stdout.trim().split(/\r?\n/).filter(Boolean).pop() ?? ''
+  note(`${action}${a ? ` ${a.id}` : ''}: ${line || run.stderr.trim().slice(0, 120) || 'no answer'}`)
   if (line.startsWith('ok:')) return { ok: true, text: line.slice(3) }
   return { ok: false, text: line.startsWith('error:') ? line.slice(6) : run.stderr.trim().slice(0, 200) || 'the script gave no answer' }
 }
 
 async function showNow($: EngineInterface) {
-  if (!shouldShow(await read($, settingsA), await read($, busyA), await $.clock.now())) return
+  if (!shouldShow(await read($, settingsA), await read($, busyA), await $.clock.now())) return note('open timer: not wanted any more')
   const list = await chosen($)
   for (const a of list) {
     const r = await exec($, 'open', a)
@@ -154,7 +162,8 @@ async function scheduleShow($: EngineInterface) {
   openTimer = undefined
   const s = await read($, settingsA)
   const b = await read($, busyA)
-  if (b.shown || !shouldShow(s, b, await $.clock.now())) return
+  if (b.shown || !shouldShow(s, b, await $.clock.now())) return note(`not scheduled: ${b.shown ? 'a window is already up' : 'not wanted'} (turn ${b.turn}, needs user ${b.needsUser}, ${s.selected.length} on)`)
+  note(`opens in ${s.delaySec} s`)
   openTimer = later($, s.delaySec * 1000, () => showNow($))
 }
 
@@ -163,7 +172,8 @@ async function hide($: EngineInterface, why: string) {
   openTimer?.cancel()
   openTimer = undefined
   const s = await read($, settingsA)
-  if (!(await read($, busyA)).shown) return
+  if (!(await read($, busyA)).shown) return note(`${why}: nothing was up`)
+  note(why)
   if (s.minimizeOnAsk) {
     await setBusy($, b => ({ ...b, shown: false }))
     for (const a of await chosen($)) await exec($, 'minimize', a)
@@ -178,7 +188,8 @@ async function hide($: EngineInterface, why: string) {
 async function askUser($: EngineInterface, tool: string, permission: boolean) {
   returnTimer?.cancel()
   returnTimer = undefined
-  if ((await read($, busyA)).needsUser) return
+  if ((await read($, busyA)).needsUser) return note(`${tool} asks: already waiting for the user`)
+  note(`${tool} asks (${permission ? 'permission' : 'question'})`)
   await setBusy($, b => ({ ...b, needsUser: true }))
   await hide($, `Claude needs you (${tool})`)
   // The engine keeps a permission prompt and the command it allows in one call and says nothing when the user answers: the windows come back after the usual delay, not when the command ends. A question waits for the user as long as it takes.
@@ -258,6 +269,7 @@ const HELP = [
   '/dt position <id> left | right | top | bottom | full [monitor] | x,y,width,height | none   where its window opens',
   '/dt place <id>                   put its open window there now',
   '/dt open | minimize | restore <id>   try one by hand',
+  '/dt log                    what the plugin saw lately (when something does not open)',
   '/dt reload                 read activities.json again',
 ].join('\n')
 
@@ -351,6 +363,8 @@ async function command($: EngineInterface, args: string): Promise<string> {
       const a = one(rest[0])
       return typeof a === 'string' ? a : act($, verb.toLowerCase() as 'open' | 'minimize' | 'restore', a)
     }
+    case 'log':
+      return trace.join('\n') || 'Nothing yet.'
     case 'reload':
       await loadAll($)
       return `${(await read($, activitiesA)).length} activities read.`
@@ -420,6 +434,7 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
+    note(`turn starts${e.agentId === undefined ? '' : ` (agent ${e.agentId}, ignored)`}`)
     if (e.agentId === undefined) {
       await setBusy($, b => ({ ...b, turn: true, needsUser: false }))
       await scheduleShow($)
@@ -438,6 +453,7 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    note(`turn ends${e.agentId === undefined ? '' : ` (agent ${e.agentId})`}`)
     await setBusy($, b => (e.agentId === undefined ? { ...b, turn: false } : { ...b, agents: b.agents.filter(id => id !== e.agentId) }))
     later($, 0, () => settle($))
     return next(e)
