@@ -32,6 +32,7 @@ const TOOL_SPEC = {
 
 let openTimer: { cancel: () => void } | undefined
 let snoozeTimer: { cancel: () => void } | undefined
+let returnTimer: { cancel: () => void } | undefined
 let queue: Promise<unknown> = Promise.resolve()
 
 const home = async ($: EngineInterface) => (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '.'
@@ -174,10 +175,20 @@ async function hide($: EngineInterface, why: string) {
   }
 }
 
-async function askUser($: EngineInterface, tool: string) {
+async function askUser($: EngineInterface, tool: string, permission: boolean) {
+  returnTimer?.cancel()
+  returnTimer = undefined
   if ((await read($, busyA)).needsUser) return
   await setBusy($, b => ({ ...b, needsUser: true }))
   await hide($, `Claude needs you (${tool})`)
+  // The engine keeps a permission prompt and the command it allows in one call and says nothing when the user answers: the windows come back after the usual delay, not when the command ends. A question waits for the user as long as it takes.
+  const s = await read($, settingsA)
+  if (permission && s.reopen) {
+    returnTimer = later($, s.delaySec * 1000, async () => {
+      await setBusy($, b => ({ ...b, needsUser: false }))
+      await showNow($)
+    })
+  }
 }
 
 /** A turn or a subagent ended: if nothing is left running, Claude is done and the user is wanted. */
@@ -363,7 +374,7 @@ export const register: Register = on => {
       return { decision: 'allow' as const }
     }
     const out = await next(e)
-    if (e.tool_use_id !== undefined && (out.decision === 'ask' || e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode')) later($, 0, () => askUser($, e.tool))
+    if (e.tool_use_id !== undefined && (out.decision === 'ask' || e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode')) later($, 0, () => askUser($, e.tool, out.decision === 'ask' && e.tool !== 'AskUserQuestion' && e.tool !== 'ExitPlanMode'))
     return out
   })
 
@@ -371,6 +382,8 @@ export const register: Register = on => {
     if (e.tool === TOOL) return { result: await answerTool($, e as unknown as Record<string, unknown>) }
     // A call that starts after the user was asked means they answered: Claude goes on, so the windows come back now, not when a long command ends.
     if ((await read($, busyA)).needsUser) {
+      returnTimer?.cancel()
+      returnTimer = undefined
       await setBusy($, b => ({ ...b, needsUser: false }))
       if ((await read($, settingsA)).reopen) await scheduleShow($)
     }

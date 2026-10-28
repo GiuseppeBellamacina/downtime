@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- **Fixed**: after a permission prompt the windows now come back after the usual delay (`/dt delay`), even while the command that asked is still running. 0.2.1 did not do it: the engine keeps the prompt and the command in one call and says nothing when the user answers. A question (`AskUserQuestion`, a plan to approve) still keeps them down until Claude goes on.
+
 ## 0.2.1
 
 - **Fixed**: after a permission prompt took the windows down, they came back only when the command that asked had finished. They now return, after the usual delay, as soon as the command starts.
