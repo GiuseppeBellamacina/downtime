@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- **Fixed**: a window already open but hidden behind others (a PDF behind the editor) was left there. `open` and `restore` now raise it above the others, without taking the keyboard.
+
 ## 0.3.0
 
 - **The default delay is 5 seconds** (it was 20). A delay you already chose stays: change it with `/dt delay`.

@@ -19,6 +19,8 @@ public static class Probe {
   public struct RECT { public int Left, Top, Right, Bottom; }
   [DllImport("user32.dll")] public static extern IntPtr SetProcessDpiAwarenessContext(IntPtr c);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
 }
 '@
@@ -96,6 +98,12 @@ try {
     Start-Sleep -Milliseconds 600
     Check 'doc: it is back' (Iconic $name) $false
     Near 'doc: back where it was' (Visible $name) "$($area.X),$($area.Y) $([int][Math]::Floor($area.Width / 2))x$($area.Height)"
+    # Sent to the very bottom (HWND_BOTTOM), nothing is below it; opened again, it is raised above the others.
+    $h = (NotepadWindow $name).MainWindowHandle
+    [void][Probe]::SetWindowPos($h, [IntPtr]1, 0, 0, 0, 0, 0x13)
+    Check 'doc: sent behind everything' ([Probe]::GetWindow($h, 2) -eq [IntPtr]::Zero) $true
+    Check 'doc: open brings a window that is behind to the front' (Doc 'open' $doc $name) 'ok:already open'
+    Check 'doc: it is no longer the last' ([Probe]::GetWindow($h, 2) -eq [IntPtr]::Zero) $false
     Check 'doc: place on the right' (Doc 'place' $doc $name @('-Position', 'right')) 'ok:placed 1'
     $half = [int][Math]::Floor($area.Width / 2)
     Near 'doc: the right half' (Visible $name) "$($area.X + $area.Width - $half),$($area.Y) ${half}x$($area.Height)"
