@@ -184,7 +184,7 @@ async function askUser($: EngineInterface, tool: string, permission: boolean) {
   // The engine keeps a permission prompt and the command it allows in one call and says nothing when the user answers: the windows come back after the usual delay, not when the command ends. A question waits for the user as long as it takes.
   const s = await read($, settingsA)
   if (permission && s.reopen) {
-    returnTimer = later($, s.delaySec * 1000, async () => {
+    returnTimer = later($, Math.max(s.delaySec, 15) * 1000, async () => {
       await setBusy($, b => ({ ...b, needsUser: false }))
       await showNow($)
     })
@@ -252,6 +252,7 @@ const HELP = [
   '/dt remove <id>',
   '/dt use <id>... | all | none   which are on',
   '/dt delay <seconds>        how long Claude works before they open',
+  '/dt sound on | off         the sound and the notification when Claude needs you',
   '/dt snooze <minutes> | off   nothing opens by itself for a while',
   '/dt browser <id> edge | chrome | brave | default   which browser a web page uses',
   '/dt position <id> left | right | top | bottom | full [monitor] | x,y,width,height | none   where its window opens',
@@ -309,6 +310,12 @@ async function command($: EngineInterface, args: string): Promise<string> {
       if (!(n >= 0 && n <= 600)) return 'Usage: /dt delay <0 to 600 seconds>'
       await changeSettings($, x => ({ ...x, delaySec: n }))
       return `They open after ${n} s of work.`
+    }
+    case 'sound': {
+      const v = rest[0]?.toLowerCase()
+      if (v !== 'on' && v !== 'off') return `Sound and notification are ${s.chime ? 'on' : 'off'}: /dt sound on | off`
+      await changeSettings($, x => ({ ...x, chime: v === 'on' }))
+      return `Sound and notification ${v}.`
     }
     case 'browser': {
       const a = one(rest[0])
@@ -388,6 +395,13 @@ export const register: Register = on => {
       if ((await read($, settingsA)).reopen) await scheduleShow($)
     }
     const ran = await next(e)
+    // A question or a plan to approve holds its call open until the user answers: when it ends Claude goes on, and the windows come back.
+    if ((e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode') && ran.deny === undefined && (await read($, busyA)).needsUser) {
+      returnTimer?.cancel()
+      returnTimer = undefined
+      await setBusy($, b => ({ ...b, needsUser: false }))
+      if ((await read($, settingsA)).reopen) await scheduleShow($)
+    }
     const result = (ran as { result?: Record<string, unknown> }).result
     const task = typeof result?.backgroundTaskId === 'string' ? result.backgroundTaskId : e.tool === 'Monitor' && typeof result?.taskId === 'string' ? result.taskId : ''
     if (task) {

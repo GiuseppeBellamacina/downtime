@@ -65,7 +65,7 @@ test('the windows open once Claude has worked for the delay, and go down with a 
   const { runs, clock, seen } = engine(on)
   await ready($)
   await $.turn.start({ text: 'x', turnId: 't1' })
-  await clock.advance(19_000)
+  await clock.advance(4_000)
   expect(runs.length).toBe(0)
   await clock.advance(2_000)
   expect(seen()).toEqual([`open:${IG}`])
@@ -80,7 +80,7 @@ test('a short answer opens nothing and says nothing', async ($, on) => {
   const { runs, clock } = engine(on)
   await ready($)
   await $.turn.start({ text: 'x', turnId: 't1' })
-  await clock.advance(5_000)
+  await clock.advance(2_000)
   await done($)
   await clock.advance(30_000)
   expect(runs.length).toBe(0)
@@ -368,13 +368,14 @@ test('a permission asked of the user takes the windows down', async ($, on) => {
   expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime'])
 })
 
-test('after a permission the windows come back on their own, and after a question only when Claude goes on', async ($, on) => {
+test('after a permission the windows come back on their own', async ($, on) => {
   const { clock, seen } = engine(on)
-  on('tool.check', (_, e) => ({ decision: JSON.stringify(e).includes('ask me') || e.tool === 'AskUserQuestion' ? ('ask' as const) : ('allow' as const) }))
+  on('tool.check', (_, e) => ({ decision: JSON.stringify(e).includes('ask me') ? ('ask' as const) : ('allow' as const) }))
   await ready($)
+  await cmd($, 'delay 20')
   await $.turn.start({ text: 'x', turnId: 't1' })
   await clock.advance(21_000)
-  // The engine says nothing when the user answers: the windows return after the usual delay.
+  // The engine says nothing when the user answers a permission: the windows return after a while.
   await $.tool.call({ tool: 'Bash', command: 'ask me' } as never)
   await clock.advance(100)
   expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime'])
@@ -382,10 +383,17 @@ test('after a permission the windows come back on their own, and after a questio
   expect(seen().length).toBe(3)
   await clock.advance(2_000)
   expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime', `open:${IG}`])
-  // A question waits for the user as long as it takes.
-  await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+})
+
+test('the windows open after 5 seconds of work unless the user chose another delay, and /dt sound switches the sound', async ($, on) => {
+  const { clock, seen } = engine(on)
+  await ready($)
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(6_000)
+  expect(seen()).toEqual([`open:${IG}`])
+  expect(await cmd($, 'sound off')).toBe('Sound and notification off.')
+  await done($)
   await clock.advance(100)
-  expect(seen().slice(4)).toEqual([`minimize:${IG}`, 'chime'])
-  await clock.advance(60_000)
-  expect(seen().length).toBe(6)
+  expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`])
+  expect(await cmd($, 'sound')).toMatch(/are off/)
 })

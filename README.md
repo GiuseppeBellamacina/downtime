@@ -53,7 +53,7 @@ Where `/plugin` is not available (for example the VS Code extension), run the sh
 /dt on
 ```
 
-From now on, a task that keeps Claude busy for 20 seconds opens what you ticked. When Claude asks you something or is done, it goes down.
+From now on, a task that keeps Claude busy for 5 seconds opens what you ticked. When Claude asks you something or is done, it goes down.
 
 ## Commands
 
@@ -68,7 +68,8 @@ The command is **`/dt`**, short for downtime: Claude Code reserves the name `/do
 | `/dt confirm <id>` | Allows an application to run **exactly** as `/dt add-app` showed it, and switches it on. A changed path or argument cancels it. |
 | `/dt list` | The activities, which are on, and the delay. |
 | `/dt use <id>… \| all \| none` | Which activities are on: the only ones that open by themselves and that Claude may use. |
-| `/dt delay <seconds>` | How long Claude must have worked before the windows open (0–600, default 20). |
+| `/dt delay <seconds>` | How long Claude must have worked before the windows open (0–600, default 5). |
+| `/dt sound on` · `sound off` | The sound and the notification ("Claude needs you", "Claude has finished") that come when the windows go down. |
 | `/dt snooze <minutes>` · `snooze off` · `snooze` | Nothing opens by itself for 1–720 minutes (a call, a meeting). Windows already open are left alone. `snooze` alone says if one is running. A snooze does not outlive the session. |
 | `/dt open <id>` · `minimize <id>` · `restore <id>` | Try one by hand. They work whether or not it is switched on. `restore` only brings back a window that is already open. |
 | `/dt browser <id> edge \| chrome \| brave \| default` | Which browser a web page opens in. A browser that is not installed gives a clear error. |
