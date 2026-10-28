@@ -125,11 +125,11 @@ async function systemOf($: EngineInterface): Promise<System | 'other'> {
 }
 
 // A system whose script is not here yet says so, instead of failing without a word.
-const SUPPORTED: Record<System | 'other', boolean> = { windows: true, macos: true, linux: false, other: false }
+const SUPPORTED: Record<System | 'other', boolean> = { windows: true, macos: true, linux: true, other: false }
 
 async function exec($: EngineInterface, action: Action, a?: Activity): Promise<Result> {
   const system = await systemOf($)
-  if (!SUPPORTED[system] || system === 'other') return { ok: false, text: 'downtime works on Windows and macOS only, for now' }
+  if (!SUPPORTED[system] || system === 'other') return { ok: false, text: 'downtime works on Windows, macOS and Linux only' }
   const argv = launcher(action, a, `${$.plugin.root}/scripts/${SCRIPTS[system]}`, `${await dirOf($)}/profiles/${a?.id ?? ''}`, system)
   const run = await serial(() => $.process.run(argv, { timeoutMs: 25_000 })).catch(err => ({ exitCode: 1, stdout: '', stderr: String(err) }))
   const line = run.stdout.trim().split(/\r?\n/).filter(Boolean).pop() ?? ''

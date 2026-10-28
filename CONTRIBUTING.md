@@ -6,7 +6,8 @@
 - `hooks/activities.ts`: pure functions: what an activity may be, when the windows should be up, the script's command line. No engine in it, so it is tested alone.
 - `scripts/window.ps1`: the Windows side. One entry point, `-Action open|minimize|restore|place|chime`.
 - `scripts/window-macos.sh` and `scripts/window-macos.applescript`: the macOS side, the same contract with `--action` style options.
-- `tests/unix/scripts.test.sh`: tries the macOS (and Linux) script against stand-ins for the system tools; runs anywhere with bash.
+- `scripts/window-linux.sh`: the Linux side (X11 through `wmctrl` and `xdotool`; Wayland says what it cannot do).
+- `tests/unix/scripts.test.sh`: tries the macOS and Linux scripts against stand-ins for the system tools; runs anywhere with bash.
 - `types/index.d.ts`: the contract of the plugin's state.
 - `tests/`: `activities.test.ts` (the rules) and `hooks.test.tsx` (the events, with a mock engine).
 
@@ -48,13 +49,15 @@ The tests cover the rules and the events (`tests/unix/scripts.test.sh` the macOS
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and on every pull request, on Windows (the supported system today). It:
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request. On Windows (the supported system) it:
 
 1. fails if a `classic.*` hook shows up in `hooks/`;
 2. checks that `scripts/window.ps1` parses;
 3. installs the Claude Code CLI (`npm install -g @anthropic-ai/claude-code`), runs `claude plugin validate .` and fails if it says a command name is one Claude Code ships (that is only a warning, but the command would never be registered), then runs `claude plugin test .`.
 
 The same checks run on your machine with the commands under "Develop".
+
+On Ubuntu and macOS a second job runs `shellcheck` on the scripts, `bash tests/unix/scripts.test.sh`, and (macOS) `osacompile` on the AppleScript.
 
 ## Pull requests
 
