@@ -23,9 +23,9 @@
 
 ```bash
 git clone https://github.com/GiuseppeBellamacina/downtime
-claude plugin validate ./dt
-claude plugin test ./dt
-claude --plugin-dir ./dt        # try it in a session
+claude plugin validate ./downtime
+claude plugin test ./downtime
+claude --plugin-dir ./downtime      # try it in a session
 ```
 
 The tests cover the rules and the events (`tests/unix/scripts.test.sh` the macOS and Linux scripts: `bash tests/unix/scripts.test.sh`). The window handling is tried by hand with a harmless activity:
