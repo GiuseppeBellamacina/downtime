@@ -363,10 +363,30 @@ test('a system with no script says so instead of failing silently', async ($, on
   expect(runs.length).toBe(0)
 })
 
-test('a permission asked of the user takes the windows down', async ($, on) => {
+test('a permission leaves the windows up by default, however many commands ask, and a question takes them down', async ($, on) => {
+  const { clock, seen } = engine(on)
+  on('tool.check', (_, e) => ({ decision: e.tool === 'Bash' ? ('ask' as const) : ('allow' as const) }))
+  await ready($)
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(21_000)
+  expect(seen()).toEqual([`open:${IG}`])
+  for (let i = 0; i < 4; i++) {
+    await $.tool.call({ tool: 'Bash', command: `step ${i}` } as never)
+    await clock.advance(30_000)
+  }
+  expect(seen()).toEqual([`open:${IG}`])
+  expect(await cmd($, 'log')).toMatch(/permission\): windows stay/)
+  await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  await clock.advance(100)
+  expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime'])
+})
+
+test('a permission asked of the user takes the windows down once /dt permission on', async ($, on) => {
   const { clock, seen } = engine(on)
   on('tool.check', () => ({ decision: 'ask' as const }))
   await ready($)
+  expect(await cmd($, 'permission')).toMatch(/leaves the windows up/)
+  expect(await cmd($, 'permission on')).toMatch(/takes the windows down/)
   await $.turn.start({ text: 'x', turnId: 't1' })
   await clock.advance(21_000)
   expect(seen()).toEqual([`open:${IG}`])
@@ -375,10 +395,11 @@ test('a permission asked of the user takes the windows down', async ($, on) => {
   expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime'])
 })
 
-test('after a permission the windows come back on their own', async ($, on) => {
+test('after a permission the windows come back on their own, when permissions take them down', async ($, on) => {
   const { clock, seen } = engine(on)
   on('tool.check', (_, e) => ({ decision: JSON.stringify(e).includes('ask me') ? ('ask' as const) : ('allow' as const) }))
   await ready($)
+  await cmd($, 'permission on')
   await $.turn.start({ text: 'x', turnId: 't1' })
   await clock.advance(6_000)
   // The engine says nothing when the user answers a permission: the windows return after a while.

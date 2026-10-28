@@ -69,6 +69,7 @@ The command is **`/dt`**, short for downtime: Claude Code reserves the name `/do
 | `/dt list` | The activities, which are on, and the delay. |
 | `/dt use <id>… \| all \| none` | Which activities are on: the only ones that open by themselves and that Claude may use. |
 | `/dt delay <seconds>` | How long Claude must have worked before the windows open (0–600, default 5). |
+| `/dt permission on` · `permission off` | Whether a permission prompt takes the windows down. Off by default: when every command asks, the windows would open and close at every one. A question, a plan to approve and the end of the work always do. |
 | `/dt sound on` · `sound off` | The sound and the notification ("Claude needs you", "Claude has finished") that come when the windows go down. |
 | `/dt snooze <minutes>` · `snooze off` · `snooze` | Nothing opens by itself for 1–720 minutes (a call, a meeting). Windows already open are left alone. `snooze` alone says if one is running. A snooze does not outlive the session. |
 | `/dt open <id>` · `minimize <id>` · `restore <id>` | Try one by hand. They work whether or not it is switched on. `restore` only brings back a window that is already open. |

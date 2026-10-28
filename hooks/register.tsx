@@ -226,6 +226,8 @@ async function hide($: EngineInterface, why: string) {
 async function askUser($: EngineInterface, tool: string, permission: boolean) {
   returnTimer?.cancel()
   returnTimer = undefined
+  // Work that asks at every command would open and close the windows at every one: they stay, and do not take the keyboard.
+  if (permission && !(await read($, settingsA)).hideOnPermission) return note(`${tool} asks (permission): windows stay, /dt permission on takes them down`)
   if ((await read($, busyA)).needsUser) return note(`${tool} asks: already waiting for the user`)
   note(`${tool} asks (${permission ? 'permission' : 'question'})`)
   await setBusy($, b => ({ ...b, needsUser: true }))
@@ -301,6 +303,7 @@ const HELP = [
   '/dt remove <id>',
   '/dt use <id>... | all | none   which are on',
   '/dt delay <seconds>        how long Claude works before they open',
+  '/dt permission on | off    whether a permission prompt takes the windows down (off: only a question, a plan and the end do)',
   '/dt sound on | off         the sound and the notification when Claude needs you',
   '/dt snooze <minutes> | off   nothing opens by itself for a while',
   '/dt browser <id> edge | chrome | brave | default   which browser a web page uses',
@@ -361,6 +364,12 @@ async function command($: EngineInterface, args: string): Promise<string> {
       if (!(n >= 0 && n <= 600)) return 'Usage: /dt delay <0 to 600 seconds>'
       await changeSettings($, x => ({ ...x, delaySec: n }))
       return `They open after ${n} s of work.`
+    }
+    case 'permission': {
+      const v = rest[0]?.toLowerCase()
+      if (v !== 'on' && v !== 'off') return `A permission prompt ${s.hideOnPermission ? 'takes the windows down' : 'leaves the windows up'}: /dt permission on | off`
+      await changeSettings($, x => ({ ...x, hideOnPermission: v === 'on' }))
+      return v === 'on' ? 'A permission prompt takes the windows down, and they come back after the delay.' : 'A permission prompt leaves the windows up. A question, a plan and the end of the work still take them down.'
     }
     case 'sound': {
       const v = rest[0]?.toLowerCase()
@@ -512,7 +521,7 @@ export const register: Register = on => {
     const snoozed = snoozedUntil > (await $.clock.now())
     const confirmed = await read($, confirmedA)
     const toggle = (id: string) => changeSettings($, x => ({ ...x, selected: x.selected.includes(id) ? x.selected.filter(i => i !== id) : [...x.selected, id] }))
-    const flag = (key: 'minimizeOnAsk' | 'reopen' | 'chime', label: string) => (
+    const flag = (key: 'minimizeOnAsk' | 'reopen' | 'chime' | 'hideOnPermission', label: string) => (
       <Button key={`flag-${key}`} plain label={`${s[key] ? '[x]' : '[ ]'} ${label}`} onPress={() => changeSettings($, x => ({ ...x, [key]: !x[key] }))} />
     )
     return (
@@ -558,6 +567,7 @@ export const register: Register = on => {
         {flag('minimizeOnAsk', 'minimize when Claude needs me or is done')}
         {flag('reopen', 'bring them back when Claude goes on')}
         {flag('chime', 'sound and notification when Claude needs me')}
+        {flag('hideOnPermission', 'minimize at a permission prompt too')}
         {Input && (
           <Input
             key="add"

@@ -34,6 +34,8 @@ export type DowntimeSettings = {
   reopen: boolean
   /** A sound and a notification when Claude needs the user. */
   chime: boolean
+  /** Take the windows down at a permission prompt too. By default only a question, a plan to approve and the end of the work do: a prompt at every command would open and close them all the time. */
+  hideOnPermission: boolean
 }
 
 export type Busy = {
