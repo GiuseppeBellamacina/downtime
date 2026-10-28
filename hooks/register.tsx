@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Activity, Busy, DowntimeSettings } from '../types'
-import { BROWSERS, DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, describePosition, find, parsePosition, isBusy, launcher, parseActivities, shouldShow, slug, words } from './activities'
+import { BROWSERS, DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, commandLine, describePosition, find, isBusy, isUsable, launcher, parseActivities, parsePosition, shouldShow, showCommand, slug, words } from './activities'
 import type { Action } from './activities'
 
 const PANE = 'downtime'
@@ -13,6 +13,7 @@ const settingsA = atom({ plugin: 'downtime', key: 'settings' } as const, DEFAULT
 // The tag changes with the fields: a value an earlier version stored (it outlives a reload) is declined.
 const busyA = atom({ plugin: 'downtime', key: 'busy' } as const, EMPTY_BUSY, { shape: 'busy-2' })
 const messageA = atom({ plugin: 'downtime', key: 'message' } as const, null)
+const confirmedA = atom({ plugin: 'downtime', key: 'confirmed' } as const, {})
 
 // The guidance lives in the tool's description: it reaches the model whatever other plugins do to the prompt.
 const TOOL_SPEC = {
@@ -54,6 +55,8 @@ const say = ($: EngineInterface, text: string | null) => update($, messageA, () 
 async function loadAll($: EngineInterface) {
   const stored = await $.store.get('settings')
   await update($, settingsA, () => ({ ...DEFAULTS, ...(stored && typeof stored === 'object' ? (stored as Partial<DowntimeSettings>) : {}) }))
+  const confirmed = await $.store.get('confirmed')
+  await update($, confirmedA, () => (confirmed && typeof confirmed === 'object' ? (confirmed as Record<string, string>) : {}))
   const text = await $.fs.read(`${await dirOf($)}/activities.json`).catch(() => '')
   const { list, problems } = text ? parseActivities(text) : { list: [] as Activity[], problems: [] as string[] }
   await update($, activitiesA, () => list)
@@ -71,10 +74,31 @@ async function saveActivities($: EngineInterface, list: Activity[]) {
   await $.fs.write(`${await dirOf($)}/activities.json`, JSON.stringify(list, null, 2))
 }
 
-/** The activities the user switched on: the only ones that open by themselves and that Claude may use. */
+/** The confirmation of an application is kept against the exact command: a changed path or argument cancels it. */
+async function setConfirmed($: EngineInterface, id: string, line: string | null) {
+  const next = { ...(await read($, confirmedA)) }
+  if (line === null) delete next[id]
+  else next[id] = line
+  await update($, confirmedA, () => next)
+  await $.store.set('confirmed', next)
+}
+
+/** The activities the user switched on: the only ones that open by themselves and that Claude may use. An application counts once confirmed. */
 async function chosen($: EngineInterface): Promise<Activity[]> {
   const { selected } = await read($, settingsA)
-  return (await read($, activitiesA)).filter(a => selected.includes(a.id))
+  const confirmed = await read($, confirmedA)
+  return (await read($, activitiesA)).filter(a => selected.includes(a.id) && isUsable(a, confirmed))
+}
+
+/** An application the user lists: stored, but it cannot run until they have seen the command and confirmed it. */
+async function addApplication($: EngineInterface, name: string, path: string, args: string[]): Promise<string> {
+  const list = await read($, activitiesA)
+  let id = slug(name) || 'app'
+  for (let n = 2; list.some(a => a.id === id); n++) id = `${slug(name).slice(0, 28)}-${n}`
+  const made = check({ id, name, kind: 'app', target: path, ...(args.length ? { args } : {}) })
+  if (typeof made === 'string') return `Not added: ${made}`
+  await saveActivities($, [...list, made])
+  return `Added "${made.name}" (${made.id}), but it cannot run yet. It would run exactly:\n  ${showCommand(made)}\nIf that is what you want: /dt confirm ${made.id}`
 }
 
 /** Adds an activity the user wrote and switches it on: writing it is the consent. */
@@ -154,6 +178,7 @@ async function settle($: EngineInterface) {
 // ---- Claude's tool and the /dt command ----------------------------------------------------
 
 async function act($: EngineInterface, action: 'open' | 'minimize' | 'restore' | 'place', a: Activity): Promise<string> {
+  if (!isUsable(a, await read($, confirmedA))) return `Not done: ${a.name} is an application you have not confirmed: /dt confirm ${a.id}`
   const r = await exec($, action, a)
   if (!r.ok) return `Not done: ${a.name}: ${r.text}`
   if (action === 'open' || action === 'restore') await setBusy($, b => ({ ...b, shown: true }))
@@ -200,6 +225,8 @@ const HELP = [
   '/dt on | off               the master switch',
   '/dt list                   the activities and which are on',
   '/dt add "Name" <address or C:\\path\\file> ["window title"]',
+  '/dt add-app "Name" C:\\path\\app.exe [arguments...]   an application (it runs only once you confirm it)',
+  '/dt confirm <id>                 allow an application to run exactly as shown',
   '/dt remove <id>',
   '/dt use <id>... | all | none   which are on',
   '/dt delay <seconds>        how long Claude works before they open',
@@ -215,6 +242,7 @@ async function command($: EngineInterface, args: string): Promise<string> {
   const [verb = '', ...rest] = words(args)
   const list = await read($, activitiesA)
   const s = await read($, settingsA)
+  const confirmed = await read($, confirmedA)
   const one = (q: string | undefined) => {
     const found = find(list, q ?? '')
     return found === 'ambiguous' ? 'several fit that' : found ?? `no activity "${q ?? ''}"`
@@ -228,14 +256,25 @@ async function command($: EngineInterface, args: string): Promise<string> {
       await changeSettings($, x => ({ ...x, enabled: verb.toLowerCase() === 'on' }))
       return `downtime is ${verb.toLowerCase()}.`
     case 'list':
-      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.target}${a.browser ? `, ${a.browser}` : ''}${a.position ? `, ${describePosition(a)}` : ''})`).join('\n') || 'No activities yet: /dt add "Name" <address or path>.')
+      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.kind === 'app' ? showCommand(a) : a.target}${a.browser ? `, ${a.browser}` : ''}${a.position ? `, ${describePosition(a)}` : ''}${isUsable(a, confirmed) ? '' : ', NOT CONFIRMED'})`).join('\n') || 'No activities yet: /dt add "Name" <address or path>.')
     case 'add':
       return rest.length < 2 ? 'Usage: /dt add "Name" <address or full path> ["window title"]' : addActivity($, rest[0]!, rest[1]!, rest[2])
+    case 'add-app':
+      return rest.length < 2 ? 'Usage: /dt add-app "Name" C:\\path\\app.exe [arguments...]' : addApplication($, rest[0]!, rest[1]!, rest.slice(2))
+    case 'confirm': {
+      const a = one(rest[0])
+      if (typeof a === 'string') return a
+      if (a.kind !== 'app') return `${a.name} is not an application: there is nothing to confirm.`
+      await setConfirmed($, a.id, commandLine(a))
+      await changeSettings($, x => ({ ...x, selected: x.selected.includes(a.id) ? x.selected : [...x.selected, a.id] }))
+      return `Confirmed and switched on: ${a.name} may run exactly\n  ${showCommand(a)}`
+    }
     case 'remove': {
       const a = one(rest[0])
       if (typeof a === 'string') return a
       await saveActivities($, list.filter(x => x.id !== a.id))
       await changeSettings($, x => ({ ...x, selected: x.selected.filter(id => id !== a.id) }))
+      await setConfirmed($, a.id, null)
       return `Removed ${a.name}.`
     }
     case 'use': {
@@ -253,7 +292,7 @@ async function command($: EngineInterface, args: string): Promise<string> {
       const a = one(rest[0])
       if (typeof a === 'string') return a
       const choice = rest[1]?.toLowerCase() ?? ''
-      if (a.kind !== 'url') return `${a.name} is a document: a browser applies to web pages only.`
+      if (a.kind !== 'url') return `${a.name} is not a web page: a browser applies to web pages only.`
       if (choice !== 'default' && !(BROWSERS as readonly string[]).includes(choice)) return `Usage: /dt browser <id> ${[...BROWSERS, 'default'].join(' | ')}`
       const { browser: _was, ...plain } = a
       const made = check(choice === 'default' ? plain : { ...plain, browser: choice })
@@ -305,7 +344,13 @@ export const register: Register = on => {
 
   // A permission or a question waits for the user: the windows go down. Only a real call counts, not a query.
   on('tool.check', async ($, e, next) => {
-    if (e.tool === TOOL) return { decision: 'allow' as const }
+    if (e.tool === TOOL) {
+      // Opening an application starts a program: Claude Code asks the user every time. Anything else of the tool is bounded by their list.
+      const input = e.input as { action?: unknown; activity?: unknown } | null
+      const app = input?.action === 'open' ? find(await chosen($), String(input.activity ?? '')) : undefined
+      if (typeof app === 'object' && app.kind === 'app') return { decision: 'ask' as const, reason: `downtime: Claude wants to start the application "${app.name}": ${showCommand(app)}` }
+      return { decision: 'allow' as const }
+    }
     const out = await next(e)
     if (e.tool_use_id !== undefined && (out.decision === 'ask' || e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode')) later($, 0, () => askUser($, e.tool))
     return out
@@ -370,6 +415,7 @@ export const register: Register = on => {
     const message = await read($, messageA)
     const snoozedUntil = (await read($, busyA)).snoozeUntil
     const snoozed = snoozedUntil > (await $.clock.now())
+    const confirmed = await read($, confirmedA)
     const toggle = (id: string) => changeSettings($, x => ({ ...x, selected: x.selected.includes(id) ? x.selected.filter(i => i !== id) : [...x.selected, id] }))
     const flag = (key: 'minimizeOnAsk' | 'reopen' | 'chime', label: string) => (
       <Button key={`flag-${key}`} plain label={`${s[key] ? '[x]' : '[ ]'} ${label}`} onPress={() => changeSettings($, x => ({ ...x, [key]: !x[key] }))} />
@@ -387,7 +433,12 @@ export const register: Register = on => {
         {list.length === 0 && <Text dimColor>No activities yet: add one below, or press an example.</Text>}
         {list.map(a => (
           <Box key={`row-${a.id}`} flexDirection="row" gap={1}>
-            <Button key={`use-${a.id}`} plain label={`${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.name}`} onPress={() => toggle(a.id)} />
+            <Button
+              key={`use-${a.id}`}
+              plain
+              label={`${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.name}${isUsable(a, confirmed) ? '' : ' (not confirmed)'}`}
+              onPress={async () => (isUsable(a, confirmed) ? toggle(a.id) : say($, `${a.name} runs a program: /dt confirm ${a.id} first, after reading the command.`))}
+            />
             <Button key={`open-${a.id}`} plain label="open" onPress={async () => say($, await act($, 'open', a))} />
             <Button key={`min-${a.id}`} plain label="minimize" onPress={async () => say($, await act($, 'minimize', a))} />
             <Button key={`rm-${a.id}`} plain label="remove" onPress={async () => say($, await command($, `remove ${a.id}`))} />

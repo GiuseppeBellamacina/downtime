@@ -62,6 +62,8 @@ The command is **`/dt`**, short for downtime: Claude Code reserves the name `/do
 | `/dt` | Opens the pane: tick the activities, try them, add and remove them, change the settings. |
 | `/dt on` · `/dt off` | The master switch. While it is off nothing opens or minimizes by itself. It starts **off**. |
 | `/dt add "Name" <address or full path> ["window title"]` | Adds an activity and switches it on. The optional third word is the text a document's window title contains, when it is not the file's name. |
+| `/dt add-app "Name" C:\path\to\app.exe [arguments…]` | Lists a program as an [application](#applications). It is stored but **cannot run** until you confirm it. |
+| `/dt confirm <id>` | Allows an application to run **exactly** as `/dt add-app` showed it, and switches it on. A changed path or argument cancels it. |
 | `/dt list` | The activities, which are on, and the delay. |
 | `/dt use <id>… \| all \| none` | Which activities are on: the only ones that open by themselves and that Claude may use. |
 | `/dt delay <seconds>` | How long Claude must have worked before the windows open (0–600, default 20). |
@@ -91,9 +93,10 @@ They live in `~/.claude/downtime/activities.json`, which you can edit by hand (t
 | --- | --- |
 | `id` | Short and stable: `a-z`, `0-9` and dashes, up to 32 characters. |
 | `name` | What you see, up to 60 characters. |
-| `kind` | `url`: a web page, in its own browser window (Edge, Chrome or Brave). `file`: a document, in its default app. |
-| `target` | An `http(s)` address, or the full path of a document. |
-| `match` | Optional, for a `file`: text its window title contains (default: the file's name without the extension). |
+| `kind` | `url`: a web page, in its own browser window (Edge, Chrome or Brave). `file`: a document, in its default app. `app`: a program you confirmed (see [Applications](#applications)). |
+| `target` | An `http(s)` address, the full path of a document, or the full path of an `.exe` (an application). |
+| `args` | Optional, for an `app`: up to 20 arguments, stored as written and passed one by one. |
+| `match` | Optional, for a `file`: text its window title contains (default: the file's name without the extension). For an `app`, it narrows the program's windows by title (default: all of them). |
 | `position` | Optional: `left`, `right`, `top`, `bottom` or `full`, or `{ "x": 0, "y": 0, "width": 800, "height": 600 }` in screen pixels. Applied when the window opens; set it with `/dt position`. |
 | `monitor` | Optional, with a side as `position`: 1 to 8, 1 being the main monitor (default 1). |
 | `browser` | Optional, for a `url`: `edge`, `chrome` or `brave` (default: Edge, else Chrome). A fixed list: never a path or a command. Set it with `/dt browser <id> <name>`. |
@@ -134,7 +137,7 @@ A short answer opens nothing and says nothing. A background task whose end is ne
 All the window handling is [`scripts/window.ps1`](scripts/window.ps1), about a hundred readable lines. It:
 
 - reads window titles and the command lines of browser processes, to find the windows of an activity, and the size of your monitors;
-- moves, minimizes and restores those windows, and starts the browser or the document's app;
+- moves, minimizes and restores those windows, and starts the browser, the document's app or an application you confirmed;
 - plays a system sound.
 
 It writes no file, opens no network connection, never touches the window of VS Code, a terminal or Claude, and every value reaches it as a separate argument (no shell ever interprets any text). The plugin itself writes `activities.json` and nothing else outside Claude Code's own plugin store.
