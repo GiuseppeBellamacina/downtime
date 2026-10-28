@@ -12,6 +12,7 @@ function engine(on: On, system: 'Windows_NT' | 'Darwin' | 'Linux' | 'FreeBSD' = 
   // Windows says so in its environment; the others are told by `uname`.
   mock.env(on, system === 'Windows_NT' ? { USERPROFILE: 'C:/Users/test', OS: 'Windows_NT' } : { HOME: '/home/test' })
   const files: Record<string, string> = {}
+  const norm = (p: string) => p.replaceAll('\\', '/')
   const runs: string[][] = []
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__downtime__${e.name}` } }))
@@ -23,6 +24,11 @@ function engine(on: On, system: 'Windows_NT' | 'Darwin' | 'Linux' | 'FreeBSD' = 
   on('process.run', (_, e) => {
     if (e.argv[0] === 'uname') return { value: { exitCode: 0, stdout: `${system}\n`, stderr: '' } } as never
     runs.push([...e.argv])
+    // Removing a folder removes what is under it.
+    if (e.argv[0] === 'cmd' || e.argv[0] === 'rm') {
+      const dir = norm(e.argv.at(-1)!)
+      for (const p of Object.keys(files)) if (norm(p).startsWith(dir)) delete files[p]
+    }
     return { value: { exitCode: 0, stdout: 'ok:done\n', stderr: '' } } as never
   })
   on('tool.call', () => ({ result: { ok: true } }))
@@ -30,6 +36,7 @@ function engine(on: On, system: 'Windows_NT' | 'Darwin' | 'Linux' | 'FreeBSD' = 
   on('turn.complete', () => ({ text: '' }))
   on('agent.spawn', () => ({ model: 'claude-sonnet-5-5', agentId: 'agent-1' }))
   on('fs.read', (_, e) => (e.path in files ? { value: files[e.path]! } : Promise.reject(new Error('missing'))))
+  on('fs.exists', (_, e) => ({ value: Object.keys(files).some(p => norm(p).startsWith(norm(e.path))) }) as never)
   on('fs.write', (_, e) => ((files[e.path] = e.text), { value: undefined }))
   // What each run was asked, whatever the system's option style (-Action or --action).
   const flag = (argv: string[], name: string) => {
@@ -396,6 +403,29 @@ test('/dt log tells what happened, including an opening that failed', async ($, 
   expect(log).toMatch(/opens in 5 s/)
   expect(log).toMatch(/open instagram-reels: ok:done/)
   expect(log).toMatch(/Claude has finished/)
+})
+
+test('/dt reset says what it removes, and only on yes puts everything back as just installed', async ($, on) => {
+  const { files, runs } = engine(on)
+  await ready($)
+  await cmd($, 'delay 12')
+  await cmd($, 'sound off')
+  await cmd($, 'snooze 30')
+  files['C:/Users/test/.claude/downtime/profiles/x'] = ''
+  const preview = await cmd($, 'reset')
+  expect(preview).toMatch(/removes:[\s\S]*activities \(1\)[\s\S]*profiles[\s\S]*reset yes/)
+  // Nothing was touched by the question.
+  expect(await cmd($, 'list')).toMatch(/opens after 12 s[\s\S]*instagram-reels/)
+  expect(runs.length).toBe(0)
+  expect(await cmd($, 'reset yes')).toMatch(/^Back as new|except the browser profiles/)
+  const out = await cmd($, 'list')
+  expect(out).toMatch(/downtime is off; opens after 5 s/)
+  expect(out).toMatch(/No activities yet/)
+  expect(await cmd($, 'sound')).toMatch(/are on/)
+  expect(await cmd($, 'snooze')).toMatch(/Not snoozed|No snooze|not snoozed/i)
+  expect(Object.entries(files).find(([p]) => p.endsWith('activities.json'))![1]).toBe('[]')
+  // The browser profiles go with a command on our own folder, not a shell line.
+  expect(runs.some(argv => argv[0] === 'cmd' && argv.includes('rmdir') && /\.claude\\downtime\\profiles$/.test(argv.at(-1)!))).toBe(true)
 })
 
 test('the windows open after 5 seconds of work unless the user chose another delay, and /dt sound switches the sound', async ($, on) => {
