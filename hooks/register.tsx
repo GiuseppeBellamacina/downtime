@@ -16,7 +16,7 @@ const messageA = atom({ plugin: 'downtime', key: 'message' } as const, null)
 // The guidance lives in the tool's description: it reaches the model whatever other plugins do to the prompt.
 const TOOL_SPEC = {
   name: 'window',
-  description: `Opens, minimizes or restores the windows the user chose in /downtime (a feed, a video, a document), only the ones they switched on. Use it only when the user asks ("open Instagram", "minimize the PDF"): the plugin already opens them while you work and minimizes them when you need the user. Actions: "list" (the switched-on activities), "open" (opens one, or brings it back if it is minimized), "minimize", "restore" (only if it is already open). "activity" is an id or a name from that list: nothing else is accepted, never an address or a path.`,
+  description: `Opens, minimizes or restores the windows the user chose in /dt (a feed, a video, a document), only the ones they switched on. Use it only when the user asks ("open Instagram", "minimize the PDF"): the plugin already opens them while you work and minimizes them when you need the user. Actions: "list" (the switched-on activities), "open" (opens one, or brings it back if it is minimized), "minimize", "restore" (only if it is already open). "activity" is an id or a name from that list: nothing else is accepted, never an address or a path.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -149,7 +149,7 @@ async function settle($: EngineInterface) {
   await hide($, 'Claude has finished')
 }
 
-// ---- Claude's tool and the /downtime command ----------------------------------------------------
+// ---- Claude's tool and the /dt command ----------------------------------------------------
 
 async function act($: EngineInterface, action: 'open' | 'minimize' | 'restore', a: Activity): Promise<string> {
   const r = await exec($, action, a)
@@ -162,24 +162,24 @@ async function answerTool($: EngineInterface, input: Record<string, unknown>): P
   const action = String(input.action ?? 'list')
   const on = await chosen($)
   const names = on.map(a => `${a.id} (${a.name})`).join(', ')
-  if (action === 'list') return on.length ? `Switched on: ${names}` : 'No activity is switched on: the user chooses them with /downtime.'
+  if (action === 'list') return on.length ? `Switched on: ${names}` : 'No activity is switched on: the user chooses them with /dt.'
   if (action !== 'open' && action !== 'minimize' && action !== 'restore') return `Not done: unknown action "${action}".`
   const found = find(on, String(input.activity ?? ''))
   if (found === 'ambiguous') return `Not done: "${String(input.activity)}" fits several. Switched on: ${names}.`
-  if (!found) return `Not done: no switched-on activity named "${String(input.activity ?? '')}". ${on.length ? `Switched on: ${names}.` : 'None is switched on: the user chooses them with /downtime.'}`
+  if (!found) return `Not done: no switched-on activity named "${String(input.activity ?? '')}". ${on.length ? `Switched on: ${names}.` : 'None is switched on: the user chooses them with /dt.'}`
   return act($, action, found)
 }
 
 const HELP = [
-  '/downtime                         the pane',
-  '/downtime on | off               the master switch',
-  '/downtime list                   the activities and which are on',
-  '/downtime add "Name" <address or C:\\path\\file> ["window title"]',
-  '/downtime remove <id>',
-  '/downtime use <id>... | all | none   which are on',
-  '/downtime delay <seconds>        how long Claude works before they open',
-  '/downtime open | minimize | restore <id>   try one by hand',
-  '/downtime reload                 read activities.json again',
+  '/dt                         the pane',
+  '/dt on | off               the master switch',
+  '/dt list                   the activities and which are on',
+  '/dt add "Name" <address or C:\\path\\file> ["window title"]',
+  '/dt remove <id>',
+  '/dt use <id>... | all | none   which are on',
+  '/dt delay <seconds>        how long Claude works before they open',
+  '/dt open | minimize | restore <id>   try one by hand',
+  '/dt reload                 read activities.json again',
 ].join('\n')
 
 async function command($: EngineInterface, args: string): Promise<string> {
@@ -193,15 +193,15 @@ async function command($: EngineInterface, args: string): Promise<string> {
   switch (verb.toLowerCase()) {
     case '':
       await $.ui.open({ id: PANE, title: 'Downtime', focus: true })
-      return 'downtime: pane opened (/downtime help lists the commands).'
+      return 'downtime: pane opened (/dt help lists the commands).'
     case 'on':
     case 'off':
       await changeSettings($, x => ({ ...x, enabled: verb.toLowerCase() === 'on' }))
       return `downtime is ${verb.toLowerCase()}.`
     case 'list':
-      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.target})`).join('\n') || 'No activities yet: /downtime add "Name" <address or path>.')
+      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.target})`).join('\n') || 'No activities yet: /dt add "Name" <address or path>.')
     case 'add':
-      return rest.length < 2 ? 'Usage: /downtime add "Name" <address or full path> ["window title"]' : addActivity($, rest[0]!, rest[1]!, rest[2])
+      return rest.length < 2 ? 'Usage: /dt add "Name" <address or full path> ["window title"]' : addActivity($, rest[0]!, rest[1]!, rest[2])
     case 'remove': {
       const a = one(rest[0])
       if (typeof a === 'string') return a
@@ -216,7 +216,7 @@ async function command($: EngineInterface, args: string): Promise<string> {
     }
     case 'delay': {
       const n = Math.round(Number(rest[0]))
-      if (!(n >= 0 && n <= 600)) return 'Usage: /downtime delay <0 to 600 seconds>'
+      if (!(n >= 0 && n <= 600)) return 'Usage: /dt delay <0 to 600 seconds>'
       await changeSettings($, x => ({ ...x, delaySec: n }))
       return `They open after ${n} s of work.`
     }
@@ -239,12 +239,12 @@ async function command($: EngineInterface, args: string): Promise<string> {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.tool.register(TOOL_SPEC)
-    await $.command.register({ name: 'downtime', description: 'Windows to keep at hand while Claude works: choose them, switch them on' })
+    await $.command.register({ name: 'dt', description: 'Downtime: windows to keep at hand while Claude works: choose them, switch them on' })
     await loadAll($)
     return next(e)
   })
 
-  on('command.run', { command: 'downtime' }, async ($, e) => ({ text: await command($, e.args) }))
+  on('command.run', { command: 'dt' }, async ($, e) => ({ text: await command($, e.args) }))
 
   // A permission or a question waits for the user: the windows go down. Only a real call counts, not a query.
   on('tool.check', async ($, e, next) => {

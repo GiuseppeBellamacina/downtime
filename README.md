@@ -34,45 +34,47 @@ Where `/plugin` is not available (for example the VS Code extension), run the sh
 **1. Add something to do:**
 
 ```text
-/downtime add "Instagram Reels" https://www.instagram.com/reels/
-/downtime add "Contract" C:\Users\me\Documents\contract.pdf
+/dt add "Instagram Reels" https://www.instagram.com/reels/
+/dt add "Contract" C:\Users\me\Documents\contract.pdf
 ```
 
 **2. Try it by hand**, and log in to the site the first time (the window has a browser profile of its own, so it remembers you):
 
 ```text
-/downtime open instagram-reels
-/downtime minimize instagram-reels
+/dt open instagram-reels
+/dt minimize instagram-reels
 ```
 
 **3. Switch it on:**
 
 ```text
-/downtime on
+/dt on
 ```
 
 From now on, a task that keeps Claude busy for 20 seconds opens what you ticked. When Claude asks you something or is done, it goes down.
 
 ## Commands
 
+The command is **`/dt`**, short for downtime: Claude Code reserves the name `/downtime` for itself, so a plugin cannot register it.
+
 | Command | What it does |
 | --- | --- |
-| `/downtime` | Opens the pane: tick the activities, try them, add and remove them, change the settings. |
-| `/downtime on` · `/downtime off` | The master switch. While it is off nothing opens or minimizes by itself. It starts **off**. |
-| `/downtime add "Name" <address or full path> ["window title"]` | Adds an activity and switches it on. The optional third word is the text a document's window title contains, when it is not the file's name. |
-| `/downtime list` | The activities, which are on, and the delay. |
-| `/downtime use <id>… \| all \| none` | Which activities are on: the only ones that open by themselves and that Claude may use. |
-| `/downtime delay <seconds>` | How long Claude must have worked before the windows open (0–600, default 20). |
-| `/downtime open <id>` · `minimize <id>` · `restore <id>` | Try one by hand. They work whether or not it is switched on. `restore` only brings back a window that is already open. |
-| `/downtime remove <id>` | Removes an activity. |
-| `/downtime reload` | Reads `activities.json` again after you edited it. |
-| `/downtime help` | Lists these commands. |
+| `/dt` | Opens the pane: tick the activities, try them, add and remove them, change the settings. |
+| `/dt on` · `/dt off` | The master switch. While it is off nothing opens or minimizes by itself. It starts **off**. |
+| `/dt add "Name" <address or full path> ["window title"]` | Adds an activity and switches it on. The optional third word is the text a document's window title contains, when it is not the file's name. |
+| `/dt list` | The activities, which are on, and the delay. |
+| `/dt use <id>… \| all \| none` | Which activities are on: the only ones that open by themselves and that Claude may use. |
+| `/dt delay <seconds>` | How long Claude must have worked before the windows open (0–600, default 20). |
+| `/dt open <id>` · `minimize <id>` · `restore <id>` | Try one by hand. They work whether or not it is switched on. `restore` only brings back a window that is already open. |
+| `/dt remove <id>` | Removes an activity. |
+| `/dt reload` | Reads `activities.json` again after you edited it. |
+| `/dt help` | Lists these commands. |
 
 An `<id>` can be abbreviated: the id or the name, or the start of one of them when only one fits. Names with spaces go in double quotes.
 
 ## Activities
 
-They live in `~/.claude/downtime/activities.json`, which you can edit by hand (then `/downtime reload`). The switches (which are on, the delay, the options) are kept between sessions.
+They live in `~/.claude/downtime/activities.json`, which you can edit by hand (then `/dt reload`). The switches (which are on, the delay, the options) are kept between sessions.
 
 ```json
 [
@@ -132,10 +134,10 @@ It writes no file, opens no network connection, never touches the window of VS C
 
 | Symptom | Try |
 | --- | --- |
-| `/downtime` does nothing | The plugin is not loaded: `/reload-plugins`, or check `claude plugin list`. |
-| The window does not open | `/downtime open <id>` shows the reason. For a document, the file must exist and its path be absolute. |
+| `/dt` does nothing | The plugin is not loaded: `/reload-plugins`, or check `claude plugin list`. |
+| The window does not open | `/dt open <id>` shows the reason. For a document, the file must exist and its path be absolute. |
 | It opens but is not minimized | A document's window is found by title: set `match` to text its title really contains. |
-| A site asks to log in every time | Use `/downtime open <id>` and log in once in that window, not in your usual browser. |
+| A site asks to log in every time | Use `/dt open <id>` and log in once in that window, not in your usual browser. |
 
 ## Contributing
 

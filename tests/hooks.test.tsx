@@ -14,7 +14,8 @@ function engine(on: On, os = 'Windows_NT') {
   const runs: string[][] = []
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__downtime__${e.name}` } }))
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  const registered: string[] = []
+  on('command.register', (_, e) => (registered.push(e.name), { value: { command: e.name } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.notify', () => ({ value: { isSent: true, channel: 'test' } }))
   on('ui.toast', () => ({ value: undefined }))
@@ -29,11 +30,11 @@ function engine(on: On, os = 'Windows_NT') {
   on('fs.read', (_, e) => (e.path in files ? { value: files[e.path]! } : Promise.reject(new Error('missing'))))
   on('fs.write', (_, e) => ((files[e.path] = e.text), { value: undefined }))
   const seen = () => runs.map(argv => argv[argv.indexOf('-Action') + 1] + (argv.includes('-Target') ? `:${argv[argv.indexOf('-Target') + 1]}` : ''))
-  return { files, runs, clock, seen }
+  return { files, runs, clock, seen, registered }
 }
 
 const cmd = async ($: Engine, args: string) =>
-  ((await $.command.run({ command: 'downtime', args, origin: { kind: 'composer' } } as never)) as { text?: string }).text ?? ''
+  ((await $.command.run({ command: 'dt', args, origin: { kind: 'composer' } } as never)) as { text?: string }).text ?? ''
 const win = ($: Engine, input: Record<string, unknown>) => $.tool.call({ tool: TOOL, ...input } as never) as Promise<{ result?: unknown }>
 const done = ($: Engine) => $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
 
@@ -43,6 +44,15 @@ async function ready($: Engine) {
   expect(await cmd($, `add "Instagram Reels" ${IG}`)).toMatch(/Added "Instagram Reels" \(instagram-reels\)/)
   await cmd($, 'on')
 }
+
+// Claude Code ships a command called "downtime": registering that name fails and the whole session.start hook is skipped.
+test('the command is registered as dt, never as downtime, and the settings and list are loaded after it', async ($, on) => {
+  const { registered, files } = engine(on)
+  files['C:\\Users\\test\\.claude\\downtime\\activities.json'] = JSON.stringify([{ id: 'ig', name: 'Instagram Reels', kind: 'url', target: IG }])
+  await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+  expect(registered).toEqual(['dt'])
+  expect(await cmd($, 'list')).toMatch(/ig: Instagram Reels/)
+})
 
 test('the windows open once Claude has worked for the delay, and go down with a chime when it is done', async ($, on) => {
   const { runs, clock, seen } = engine(on)
