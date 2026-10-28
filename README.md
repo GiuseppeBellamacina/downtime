@@ -100,7 +100,17 @@ They live in `~/.claude/downtime/activities.json`, which you can edit by hand (t
 
 - A **web page** gets a browser profile of its own in `~/.claude/downtime/profiles/<id>`. Log in once, in that window: the browser keeps it. No password or cookie ever passes through the plugin.
 - A **document** opens in the app Windows associates with it. Its window is found by its title.
-- **Programs and scripts are refused** (`.exe`, `.bat`, `.cmd`, `.ps1`, `.lnk`, `.msi`, `.js`, …): `downtime` opens documents, it never runs anything. Entries that fail a check are dropped, with the reason.
+- **Programs and scripts are refused as documents** (`.exe`, `.bat`, `.cmd`, `.ps1`, `.lnk`, `.msi`, `.js`, …): a `file` is opened, never run. A program is an *application*, with its own stricter rules below. Entries that fail a check are dropped, with the reason.
+
+### Applications
+
+A program you list yourself: a music player, a notes app. Because `downtime` refuses programs everywhere else, an application has rules of its own:
+
+- **Only you can add one**, with `/dt add-app "Name" C:\path\to\app.exe [arguments…]`. Claude's tool never can. An entry written by hand into `activities.json` is not trusted either: it stays unusable until you confirm it.
+- **It is stored exactly as written**: the full path of an `.exe` and a fixed list of arguments. They reach the program one by one, never through a shell and never read as text.
+- **It cannot run until you have seen the full command and confirmed it** with `/dt confirm <id>`. Changing the path or an argument cancels the confirmation.
+- **Claude's tool** can list, minimize and restore a confirmed application by name. To *open* one, Claude Code asks you first, every time.
+- **Never the window you work in**: your editor, a terminal and Claude are refused as applications.
 
 ## When it acts
 
