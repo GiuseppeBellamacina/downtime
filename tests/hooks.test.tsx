@@ -17,11 +17,11 @@ function engine(on: On, os = 'Windows_NT') {
   const registered: string[] = []
   on('command.register', (_, e) => (registered.push(e.name), { value: { command: e.name } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.notify', () => ({ value: { isSent: true, channel: 'test' } }))
+  on('ui.notify', () => ({ value: { isSent: true, channel: 'test' } }) as never)
   on('ui.toast', () => ({ value: undefined }))
   on('process.run', (_, e) => {
     runs.push([...e.argv])
-    return { value: { exitCode: 0, stdout: 'ok:done\n', stderr: '' } }
+    return { value: { exitCode: 0, stdout: 'ok:done\n', stderr: '' } } as never
   })
   on('tool.call', () => ({ result: { ok: true } }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
@@ -138,6 +138,47 @@ test('the command checks what it adds: a program, a script or a relative path is
   const saved = JSON.parse(Object.entries(files).find(([p]) => p.endsWith('activities.json'))![1])
   expect(saved.map((a: { id: string }) => a.id)).toEqual(['contratto'])
   expect(await cmd($, 'list')).toMatch(/\[x\] contratto: Contratto \(file C:\\Users\\me\\Documents\\contratto\.pdf\)/)
+})
+
+test('a snooze holds the automatic opening back, leaves open windows alone, and ends when asked or when it runs out', async ($, on) => {
+  const { runs, clock, seen } = engine(on)
+  await ready($)
+  expect(await cmd($, 'snooze')).toBe('Not snoozed.')
+  expect(await cmd($, 'snooze 30')).toMatch(/^Nothing opens by itself until \d\d:\d\d\.$/)
+  expect(await cmd($, 'snooze')).toMatch(/^Snoozed until \d\d:\d\d\.$/)
+
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(25_000)
+  expect(runs.length).toBe(0)
+
+  // Ended by hand: Claude is still at work, so they open after the delay.
+  expect(await cmd($, 'snooze off')).toBe('Snooze ended.')
+  await clock.advance(21_000)
+  expect(seen()).toEqual([`open:${IG}`])
+
+  // Windows already open stay as they are when a snooze starts.
+  await cmd($, 'snooze 10')
+  await clock.advance(60_000)
+  expect(seen()).toEqual([`open:${IG}`])
+})
+
+test('a snooze that runs out lets the windows open if Claude is still at work', async ($, on) => {
+  const { clock, seen } = engine(on)
+  await ready($)
+  await cmd($, 'snooze 5')
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(5 * 60_000 - 1_000)
+  expect(seen()).toEqual([])
+  await clock.advance(22_000)
+  expect(seen()).toEqual([`open:${IG}`])
+})
+
+test('a snooze needs minutes between 1 and 720', async ($, on) => {
+  const { clock } = engine(on)
+  await ready($)
+  for (const bad of ['0', '-3', '721', 'abc']) expect(await cmd($, `snooze ${bad}`)).toMatch(/^Usage: \/dt snooze/)
+  expect(await cmd($, 'snooze off')).toBe('Not snoozed.')
+  await clock.advance(1_000)
 })
 
 test('off Windows it says so instead of failing silently', async ($, on) => {

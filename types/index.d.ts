@@ -34,6 +34,8 @@ export type Busy = {
   tasks: { id: string; at: number }[]
   /** A permission or a question is waiting for the user. */
   needsUser: boolean
+  /** Nothing opens by itself before this time (milliseconds since the epoch); 0 for no snooze. */
+  snoozeUntil: number
   /** The windows are up, as far as the plugin knows. */
   shown: boolean
 }
@@ -43,7 +45,8 @@ declare module 'claude-code' {
     downtime: {
       activities: Activity[]
       settings: DowntimeSettings
-      busy: Busy
+      /** Kept under a tag (see `busyA`): a version whose fields differ declines what an older one stored. The contract has no imports, so this is claude-code's `Shaped<Busy>` written out. */
+      busy: { shape: string; value: Busy }
       /** The last thing the pane tells the user. */
       message: string | null
     }
