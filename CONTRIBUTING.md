@@ -2,7 +2,7 @@
 
 ## Layout
 
-- `hooks/register.tsx`: the hooks module: the events, the `/downtime` command and pane, Claude's `window` tool, and the runner that calls the script.
+- `hooks/register.tsx`: the hooks module: the events, the `/dt` command and pane, Claude's `window` tool, and the runner that calls the script.
 - `hooks/activities.ts`: pure functions: what an activity may be, when the windows should be up, the script's command line. No engine in it, so it is tested alone.
 - `scripts/window.ps1`: the Windows side. One entry point, `-Action open|minimize|restore|chime`.
 - `types/index.d.ts`: the contract of the plugin's state.
@@ -21,18 +21,18 @@
 
 ```bash
 git clone https://github.com/GiuseppeBellamacina/downtime
-claude plugin validate ./downtime
-claude plugin test ./downtime
-claude --plugin-dir ./downtime        # try it in a session
+claude plugin validate ./dt
+claude plugin test ./dt
+claude --plugin-dir ./dt        # try it in a session
 ```
 
 The tests cover the rules and the events. The window handling is tried by hand with a harmless activity:
 
 ```text
-/downtime add "Note" C:\path\to\a\note.txt
-/downtime open note
-/downtime minimize note
-/downtime restore note
+/dt add "Note" C:\path\to\a\note.txt
+/dt open note
+/dt minimize note
+/dt restore note
 ```
 
 ## Adding another system
@@ -49,7 +49,7 @@ The tests cover the rules and the events. The window handling is tried by hand w
 
 1. fails if a `classic.*` hook shows up in `hooks/`;
 2. checks that `scripts/window.ps1` parses;
-3. installs the Claude Code CLI (`npm install -g @anthropic-ai/claude-code`) and runs `claude plugin validate .` and `claude plugin test .`.
+3. installs the Claude Code CLI (`npm install -g @anthropic-ai/claude-code`), runs `claude plugin validate .` and fails if it says a command name is one Claude Code ships (that is only a warning, but the command would never be registered), then runs `claude plugin test .`.
 
 The same checks run on your machine with the commands under "Develop".
 

@@ -38,8 +38,14 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
+      # A command name Claude Code ships is only a warning, but the command is then never registered.
       - name: Validate
-        run: claude plugin validate .
+        shell: pwsh
+        run: |
+          $output = claude plugin validate . 2>&1 | Out-String
+          $output
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if ($output -match 'is a name Claude Code ships') { Write-Error 'A command name is one Claude Code ships: rename it.'; exit 1 }
 
       - name: Test
         run: claude plugin test .
