@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+- **`/dt reset`**: says what it would remove; `/dt reset yes` puts downtime back as just installed (the list, the settings, the confirmed applications, the browser profiles with their logins, the log and any snooze). Windows that are open stay open.
+
 ## 0.3.3
 
 - **Fixed**: after a permission prompt the windows waited at least 15 seconds. They now come back after the delay you chose (`/dt delay`, 5 by default). If you take longer than that to answer a prompt, they come up anyway: raise the delay, or `/dt snooze`.

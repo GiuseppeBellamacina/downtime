@@ -76,6 +76,7 @@ The command is **`/dt`**, short for downtime: Claude Code reserves the name `/do
 | `/dt position <id> left \| right \| top \| bottom \| full [monitor]` · `<id> x,y,width,height` · `<id> none` | Where the window goes when it opens: a half (or all) of a monitor's work area, taskbar excluded, or an exact rectangle in screen pixels. Monitor 1 is the main one, the others follow from left to right. |
 | `/dt place <id>` | Puts the open window of an activity on its position now. |
 | `/dt remove <id>` | Removes an activity. |
+| `/dt reset` · `reset yes` | Puts downtime back as just installed: the list, the settings, the confirmed applications and the browser profiles (their logins). `reset` only says what would go; `reset yes` does it. Windows that are open stay open. |
 | `/dt log` | The last things the plugin saw: turns, the opening timer, each action and its answer. Read it when a window did not open by itself. |
 | `/dt reload` | Reads `activities.json` again after you edited it. |
 | `/dt help` | Lists these commands. |

@@ -121,6 +121,44 @@ async function addActivity($: EngineInterface, name: string, target: string, mat
   return `Added "${made.name}" (${made.id}) and switched it on.`
 }
 
+// ---- start again ----------------------------------------------------------------------------------
+
+/** What `/dt reset` would remove, said before it does anything. */
+async function resetPreview($: EngineInterface): Promise<string> {
+  const n = (await read($, activitiesA)).length
+  return [
+    'This puts downtime back as just installed. It removes:',
+    `  - the list of activities (${n})`,
+    '  - the settings (switches, delay, sound, browser and position choices) and the confirmed applications',
+    `  - the browser profiles in ${await dirOf($)}/profiles (the logins you made in those windows, such as Instagram)`,
+    '  - the log and any snooze',
+    'Windows that are open now stay open. To go on: /dt reset yes',
+  ].join('\n')
+}
+
+/** Everything the plugin keeps, back to a fresh install. The browser profiles are the only thing on disk besides the list. */
+async function resetAll($: EngineInterface): Promise<string> {
+  for (const t of [openTimer, snoozeTimer, returnTimer]) t?.cancel()
+  openTimer = snoozeTimer = returnTimer = undefined
+  await saveActivities($, [])
+  await $.store.delete('settings')
+  await $.store.delete('confirmed')
+  await update($, settingsA, () => DEFAULTS)
+  await update($, confirmedA, () => ({}))
+  await update($, busyA, () => EMPTY_BUSY)
+  await say($, null)
+  trace.length = 0
+  const profiles = `${await dirOf($)}/profiles`
+  const system = await systemOf($)
+  // Only our own folder, and only a path a command line cannot misread.
+  if (!/\/\.claude\/downtime\/profiles$/.test(profiles.replaceAll('\\', '/')) || /[&|<>^%"]/.test(profiles)) return `Back as new, except the browser profiles: delete the folder ${profiles} yourself.`
+  if (!(await $.fs.exists(profiles).catch(() => false))) return 'Back as new.'
+  const argv = system === 'windows' ? ['cmd', '/c', 'rmdir', '/s', '/q', profiles.replaceAll('/', '\\')] : ['rm', '-rf', profiles]
+  const run = await serial(() => $.process.run(argv, { timeoutMs: 25_000 })).catch(err => ({ exitCode: 1, stdout: '', stderr: String(err) }))
+  if (run.exitCode !== 0 || (await $.fs.exists(profiles).catch(() => false))) return `Back as new, except the browser profiles in ${profiles}: something still uses them. Close those windows and delete the folder.`
+  return 'Back as new.'
+}
+
 // ---- windows --------------------------------------------------------------------------------------
 
 type Result = { ok: boolean; text: string }
@@ -269,6 +307,7 @@ const HELP = [
   '/dt position <id> left | right | top | bottom | full [monitor] | x,y,width,height | none   where its window opens',
   '/dt place <id>                   put its open window there now',
   '/dt open | minimize | restore <id>   try one by hand',
+  '/dt reset | reset yes      put everything back as just installed (it says what goes before it does)',
   '/dt log                    what the plugin saw lately (when something does not open)',
   '/dt reload                 read activities.json again',
 ].join('\n')
@@ -363,6 +402,8 @@ async function command($: EngineInterface, args: string): Promise<string> {
       const a = one(rest[0])
       return typeof a === 'string' ? a : act($, verb.toLowerCase() as 'open' | 'minimize' | 'restore', a)
     }
+    case 'reset':
+      return rest[0]?.toLowerCase() === 'yes' ? resetAll($) : resetPreview($)
     case 'log':
       return trace.join('\n') || 'Nothing yet.'
     case 'reload':
