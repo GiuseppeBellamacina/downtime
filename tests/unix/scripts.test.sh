@@ -4,6 +4,7 @@
 # It tests the script's own logic (what it asks the system, in what order, with what arguments); whether
 # System Events or the window manager do what they are asked is for a real Mac and a real desktop to say.
 # Runs anywhere with bash:  bash tests/unix/scripts.test.sh
+# shellcheck disable=SC2016  # the stand-ins are written in single quotes on purpose: their $ must reach the stand-in's own shell
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
