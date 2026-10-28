@@ -195,7 +195,7 @@ async function askUser($: EngineInterface, tool: string, permission: boolean) {
   // The engine keeps a permission prompt and the command it allows in one call and says nothing when the user answers: the windows come back after the usual delay, not when the command ends. A question waits for the user as long as it takes.
   const s = await read($, settingsA)
   if (permission && s.reopen) {
-    returnTimer = later($, Math.max(s.delaySec, 15) * 1000, async () => {
+    returnTimer = later($, s.delaySec * 1000, async () => {
       await setBusy($, b => ({ ...b, needsUser: false }))
       await showNow($)
     })

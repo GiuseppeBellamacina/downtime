@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- **Fixed**: after a permission prompt the windows waited at least 15 seconds. They now come back after the delay you chose (`/dt delay`, 5 by default). If you take longer than that to answer a prompt, they come up anyway: raise the delay, or `/dt snooze`.
+
 ## 0.3.2
 
 - **`/dt log`**: the last things the plugin saw (turns, the opening timer, each action and its answer, permissions and questions). For when a window does not open by itself and nothing says why.
