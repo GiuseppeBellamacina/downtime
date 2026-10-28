@@ -2,7 +2,7 @@
 import type { Activity, Busy, DowntimeSettings } from '../types'
 
 export const DEFAULTS: DowntimeSettings = { enabled: false, selected: [], delaySec: 20, minimizeOnAsk: true, reopen: true, chime: true }
-export const EMPTY_BUSY: Busy = { turn: false, agents: [], tasks: [], needsUser: false, shown: false }
+export const EMPTY_BUSY: Busy = { turn: false, agents: [], tasks: [], needsUser: false, snoozeUntil: 0, shown: false }
 
 /** Ready to add with one press: the two the user named. */
 export const PRESETS: Activity[] = [
@@ -77,8 +77,16 @@ export function find(list: readonly Activity[], query: string): Activity | 'ambi
 
 export const isBusy = (b: Busy, now: number) => b.turn || b.agents.length > 0 || b.tasks.some(t => now - t.at < STALE_TASK_MS)
 
-/** Windows should be up: the switch is on, something is chosen, Claude is busy and does not wait for the user. */
-export const shouldShow = (s: DowntimeSettings, b: Busy, now: number) => s.enabled && s.selected.length > 0 && !b.needsUser && isBusy(b, now)
+/** Windows should be up: the switch is on, something is chosen, no snooze is running, Claude is busy and does not wait for the user. */
+export const shouldShow = (s: DowntimeSettings, b: Busy, now: number) => s.enabled && s.selected.length > 0 && !b.needsUser && now >= b.snoozeUntil && isBusy(b, now)
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/** HH:MM, for what the user reads. */
+export function clockTime(ms: number): string {
+  const d = new Date(ms)
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 /** Words with "double quotes" keeping spaces: `add "Instagram Reels" https://...`. */
 export function words(text: string): string[] {

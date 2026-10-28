@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Activity, Busy, DowntimeSettings } from '../types'
-import { DEFAULTS, EMPTY_BUSY, PRESETS, check, find, isBusy, launcher, parseActivities, shouldShow, slug, words } from './activities'
+import { DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, find, isBusy, launcher, parseActivities, shouldShow, slug, words } from './activities'
 import type { Action } from './activities'
 
 const PANE = 'downtime'
@@ -10,7 +10,8 @@ const TOOL = 'mcp__downtime__window'
 
 const activitiesA = atom({ plugin: 'downtime', key: 'activities' } as const, [])
 const settingsA = atom({ plugin: 'downtime', key: 'settings' } as const, DEFAULTS)
-const busyA = atom({ plugin: 'downtime', key: 'busy' } as const, EMPTY_BUSY)
+// The tag changes with the fields: a value an earlier version stored (it outlives a reload) is declined.
+const busyA = atom({ plugin: 'downtime', key: 'busy' } as const, EMPTY_BUSY, { shape: 'busy-2' })
 const messageA = atom({ plugin: 'downtime', key: 'message' } as const, null)
 
 // The guidance lives in the tool's description: it reaches the model whatever other plugins do to the prompt.
@@ -29,6 +30,7 @@ const TOOL_SPEC = {
 }
 
 let openTimer: { cancel: () => void } | undefined
+let snoozeTimer: { cancel: () => void } | undefined
 let queue: Promise<unknown> = Promise.resolve()
 
 const home = async ($: EngineInterface) => (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '.'
@@ -170,6 +172,29 @@ async function answerTool($: EngineInterface, input: Record<string, unknown>): P
   return act($, action, found)
 }
 
+/** Nothing opens by itself for a while. Windows already open are left alone; the snooze does not outlive the session. */
+async function snooze($: EngineInterface, arg: string | undefined): Promise<string> {
+  const now = await $.clock.now()
+  const until = (await read($, busyA)).snoozeUntil
+  if (arg === undefined) return until > now ? `Snoozed until ${clockTime(until)}.` : 'Not snoozed.'
+  snoozeTimer?.cancel()
+  snoozeTimer = undefined
+  if (arg === 'off') {
+    await setBusy($, b => ({ ...b, snoozeUntil: 0 }))
+    await scheduleShow($)
+    return until > now ? 'Snooze ended.' : 'Not snoozed.'
+  }
+  const minutes = Math.round(Number(arg))
+  if (!(minutes >= 1 && minutes <= 720)) return 'Usage: /dt snooze <1 to 720 minutes> | off'
+  const end = now + minutes * 60_000
+  await setBusy($, b => ({ ...b, snoozeUntil: end }))
+  openTimer?.cancel()
+  openTimer = undefined
+  // When it runs out, Claude may still be at work: the windows then open as they would have.
+  snoozeTimer = later($, minutes * 60_000, () => scheduleShow($))
+  return `Nothing opens by itself until ${clockTime(end)}.`
+}
+
 const HELP = [
   '/dt                         the pane',
   '/dt on | off               the master switch',
@@ -178,6 +203,7 @@ const HELP = [
   '/dt remove <id>',
   '/dt use <id>... | all | none   which are on',
   '/dt delay <seconds>        how long Claude works before they open',
+  '/dt snooze <minutes> | off   nothing opens by itself for a while',
   '/dt open | minimize | restore <id>   try one by hand',
   '/dt reload                 read activities.json again',
 ].join('\n')
@@ -220,6 +246,8 @@ async function command($: EngineInterface, args: string): Promise<string> {
       await changeSettings($, x => ({ ...x, delaySec: n }))
       return `They open after ${n} s of work.`
     }
+    case 'snooze':
+      return snooze($, rest[0]?.toLowerCase())
     case 'open':
     case 'minimize':
     case 'restore': {
@@ -311,6 +339,8 @@ export const register: Register = on => {
     const s = await read($, settingsA)
     const list = await read($, activitiesA)
     const message = await read($, messageA)
+    const snoozedUntil = (await read($, busyA)).snoozeUntil
+    const snoozed = snoozedUntil > (await $.clock.now())
     const toggle = (id: string) => changeSettings($, x => ({ ...x, selected: x.selected.includes(id) ? x.selected.filter(i => i !== id) : [...x.selected, id] }))
     const flag = (key: 'minimizeOnAsk' | 'reopen' | 'chime', label: string) => (
       <Button key={`flag-${key}`} plain label={`${s[key] ? '[x]' : '[ ]'} ${label}`} onPress={() => changeSettings($, x => ({ ...x, [key]: !x[key] }))} />
@@ -343,6 +373,12 @@ export const register: Register = on => {
           <Button key="less" plain label="-5 s" onPress={() => changeSettings($, x => ({ ...x, delaySec: Math.max(0, x.delaySec - 5) }))} />
           <Text>open after {s.delaySec} s of work</Text>
           <Button key="more" plain label="+5 s" onPress={() => changeSettings($, x => ({ ...x, delaySec: Math.min(600, x.delaySec + 5) }))} />
+        </Box>
+        <Box flexDirection="row" gap={1}>
+          <Text>{snoozed ? `snoozed until ${clockTime(snoozedUntil)}` : 'not snoozed'}</Text>
+          <Button key="snooze-15" plain label="snooze 15 min" onPress={async () => say($, await snooze($, '15'))} />
+          <Button key="snooze-60" plain label="snooze 1 h" onPress={async () => say($, await snooze($, '60'))} />
+          {snoozed && <Button key="snooze-off" plain label="end snooze" onPress={async () => say($, await snooze($, 'off'))} />}
         </Box>
         {flag('minimizeOnAsk', 'minimize when Claude needs me or is done')}
         {flag('reopen', 'bring them back when Claude goes on')}

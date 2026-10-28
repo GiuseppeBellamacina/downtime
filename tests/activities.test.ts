@@ -45,6 +45,10 @@ test('the windows are wanted only while Claude is busy and does not wait for the
   expect(shouldShow(on, { ...EMPTY_BUSY, turn: true, needsUser: true }, 0)).toBe(false)
   expect(shouldShow({ ...on, enabled: false }, { ...EMPTY_BUSY, turn: true }, 0)).toBe(false)
   expect(shouldShow({ ...on, selected: [] }, { ...EMPTY_BUSY, turn: true }, 0)).toBe(false)
+  // A snooze holds it back until its time.
+  const snoozed = { ...EMPTY_BUSY, turn: true, snoozeUntil: 5000 }
+  expect(shouldShow(on, snoozed, 4999)).toBe(false)
+  expect(shouldShow(on, snoozed, 5000)).toBe(true)
   // A background task counts, until its end notice is overdue.
   const task = { ...EMPTY_BUSY, tasks: [{ id: 't', at: 1000 }] }
   expect(isBusy(task, 1000 + STALE_TASK_MS - 1)).toBe(true)
