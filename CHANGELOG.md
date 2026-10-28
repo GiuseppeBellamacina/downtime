@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- **The default delay is 5 seconds** (it was 20). A delay you already chose stays: change it with `/dt delay`.
+- **After a question** (`AskUserQuestion`, a plan to approve) the windows come back as soon as the user has answered and Claude goes on.
+- **`/dt sound on | off`**: the sound and the notification ("Claude needs you") that come with it.
+- After a permission prompt the windows return after the delay, at least 15 seconds, so they do not come up over a prompt still open.
+
 ## 0.2.2
 
 - **Fixed**: after a permission prompt the windows now come back after the usual delay (`/dt delay`), even while the command that asked is still running. 0.2.1 did not do it: the engine keeps the prompt and the command in one call and says nothing when the user answers. A question (`AskUserQuestion`, a plan to approve) still keeps them down until Claude goes on.
