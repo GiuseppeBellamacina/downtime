@@ -122,7 +122,7 @@ launch() {
       nohup "$(find_bin xdg-open)" "$target" > /dev/null 2>&1 & ;;
     app)
       case "$NEVER_NAMES" in *",$(lower "${target##*/}"),"*) fail 'that program is the window you work in: refused' ;; esac
-      [ -x "$target" ] && [ ! -d "$target" ] || fail "no such program: $target"
+      if [ ! -x "$target" ] || [ -d "$target" ]; then fail "no such program: $target"; fi
       # The arguments come as written: each one reaches the program whole.
       nohup "$target" ${args[@]+"${args[@]}"} > /dev/null 2>&1 & ;;
     *) fail "unknown kind: $kind" ;;
