@@ -8,6 +8,8 @@ export type Activity = {
   target: string
   /** For a file: text its window's title holds (default: the file's name). */
   match?: string
+  /** For a web page: the browser to use (default: Edge, else Chrome). */
+  browser?: 'edge' | 'chrome' | 'brave'
 }
 
 export type DowntimeSettings = {

@@ -1,4 +1,4 @@
-# downtime: opens, minimizes and restores the windows of the activities the user chose in /downtime.
+# downtime: opens, minimizes and restores the windows of the activities the user chose in /dt.
 #
 # What it touches: window titles and process command lines (read), the windows (minimize / restore), and it starts the
 # browser or the document's own app. It writes no file, opens no connection and runs nothing it was not given a name for.
@@ -8,7 +8,8 @@ param(
   [ValidateSet('url', 'file')][string]$Kind,
   [string]$Target,
   [string]$Match,
-  [string]$Profile
+  [string]$Profile,
+  [ValidateSet('edge', 'chrome', 'brave')][string]$Browser
 )
 $ErrorActionPreference = 'Stop'
 
@@ -57,6 +58,9 @@ public static class Win {
 }
 '@
 
+  # The browsers a web activity may name: the program each one starts and runs as.
+  $exeNames = @{ edge = 'msedge'; chrome = 'chrome'; brave = 'brave' }
+
   # Never the window the user is working in, whatever its title says.
   $neverThese = @('Code', 'Code - Insiders', 'WindowsTerminal', 'powershell', 'pwsh', 'cmd', 'conhost', 'devenv', 'claude')
 
@@ -65,8 +69,9 @@ public static class Win {
     if ($Kind -eq 'url') {
       # The activity's own browser profile is the key: every window of that profile, and no other.
       $dir = $Profile.Replace('/', '\')
-      $pids = @(Get-CimInstance Win32_Process -Filter "Name = 'msedge.exe' OR Name = 'chrome.exe'" |
-          Where-Object { $_.CommandLine -and $_.CommandLine.Contains($dir) } |
+      $names = if ($Browser) { @($exeNames[$Browser] + '.exe') } else { @('msedge.exe', 'chrome.exe') }
+      $pids = @(Get-CimInstance Win32_Process |
+          Where-Object { ($names -contains $_.Name) -and $_.CommandLine -and $_.CommandLine.Contains($dir) } |
           ForEach-Object { [uint32]$_.ProcessId })
       return @($all | Where-Object { $pids -contains $_.Pid })
     }
@@ -104,7 +109,13 @@ public static class Win {
   elseif ($Kind -eq 'url') {
     $dir = $Profile.Replace('/', '\')
     $browserArgs = @(('--app=' + $Target), ('--user-data-dir="' + $dir + '"'), '--no-first-run', '--no-default-browser-check')
-    try { Start-Process -FilePath 'msedge' -ArgumentList $browserArgs } catch { Start-Process -FilePath 'chrome' -ArgumentList $browserArgs }
+    # A browser the user named is the only one tried; without one, Edge and then Chrome.
+    $candidates = if ($Browser) { @($exeNames[$Browser]) } else { @('msedge', 'chrome') }
+    $started = $false
+    foreach ($exe in $candidates) {
+      try { Start-Process -FilePath $exe -ArgumentList $browserArgs; $started = $true; break } catch { }
+    }
+    if (-not $started) { throw ('could not start ' + ($candidates -join ' or ') + ': is it installed?') }
     Write-Output 'ok:opened'
   }
   else {

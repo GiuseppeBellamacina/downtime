@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Activity, Busy, DowntimeSettings } from '../types'
-import { DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, find, isBusy, launcher, parseActivities, shouldShow, slug, words } from './activities'
+import { BROWSERS, DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, find, isBusy, launcher, parseActivities, shouldShow, slug, words } from './activities'
 import type { Action } from './activities'
 
 const PANE = 'downtime'
@@ -204,6 +204,7 @@ const HELP = [
   '/dt use <id>... | all | none   which are on',
   '/dt delay <seconds>        how long Claude works before they open',
   '/dt snooze <minutes> | off   nothing opens by itself for a while',
+  '/dt browser <id> edge | chrome | brave | default   which browser a web page uses',
   '/dt open | minimize | restore <id>   try one by hand',
   '/dt reload                 read activities.json again',
 ].join('\n')
@@ -225,7 +226,7 @@ async function command($: EngineInterface, args: string): Promise<string> {
       await changeSettings($, x => ({ ...x, enabled: verb.toLowerCase() === 'on' }))
       return `downtime is ${verb.toLowerCase()}.`
     case 'list':
-      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.target})`).join('\n') || 'No activities yet: /dt add "Name" <address or path>.')
+      return `downtime is ${s.enabled ? 'on' : 'off'}; opens after ${s.delaySec} s of work.\n` + (list.map(a => `${s.selected.includes(a.id) ? '[x]' : '[ ]'} ${a.id}: ${a.name} (${a.kind} ${a.target}${a.browser ? `, ${a.browser}` : ''})`).join('\n') || 'No activities yet: /dt add "Name" <address or path>.')
     case 'add':
       return rest.length < 2 ? 'Usage: /dt add "Name" <address or full path> ["window title"]' : addActivity($, rest[0]!, rest[1]!, rest[2])
     case 'remove': {
@@ -245,6 +246,18 @@ async function command($: EngineInterface, args: string): Promise<string> {
       if (!(n >= 0 && n <= 600)) return 'Usage: /dt delay <0 to 600 seconds>'
       await changeSettings($, x => ({ ...x, delaySec: n }))
       return `They open after ${n} s of work.`
+    }
+    case 'browser': {
+      const a = one(rest[0])
+      if (typeof a === 'string') return a
+      const choice = rest[1]?.toLowerCase() ?? ''
+      if (a.kind !== 'url') return `${a.name} is a document: a browser applies to web pages only.`
+      if (choice !== 'default' && !(BROWSERS as readonly string[]).includes(choice)) return `Usage: /dt browser <id> ${[...BROWSERS, 'default'].join(' | ')}`
+      const { browser: _was, ...plain } = a
+      const made = check(choice === 'default' ? plain : { ...plain, browser: choice })
+      if (typeof made === 'string') return `Not changed: ${made}`
+      await saveActivities($, list.map(x => (x.id === a.id ? made : x)))
+      return choice === 'default' ? `${a.name} opens in Edge, or Chrome if Edge is missing.` : `${a.name} opens in ${choice}.`
     }
     case 'snooze':
       return snooze($, rest[0]?.toLowerCase())

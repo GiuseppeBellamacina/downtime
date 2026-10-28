@@ -67,6 +67,7 @@ The command is **`/dt`**, short for downtime: Claude Code reserves the name `/do
 | `/dt delay <seconds>` | How long Claude must have worked before the windows open (0–600, default 20). |
 | `/dt snooze <minutes>` · `snooze off` · `snooze` | Nothing opens by itself for 1–720 minutes (a call, a meeting). Windows already open are left alone. `snooze` alone says if one is running. A snooze does not outlive the session. |
 | `/dt open <id>` · `minimize <id>` · `restore <id>` | Try one by hand. They work whether or not it is switched on. `restore` only brings back a window that is already open. |
+| `/dt browser <id> edge \| chrome \| brave \| default` | Which browser a web page opens in. A browser that is not installed gives a clear error. |
 | `/dt remove <id>` | Removes an activity. |
 | `/dt reload` | Reads `activities.json` again after you edited it. |
 | `/dt help` | Lists these commands. |
@@ -88,9 +89,10 @@ They live in `~/.claude/downtime/activities.json`, which you can edit by hand (t
 | --- | --- |
 | `id` | Short and stable: `a-z`, `0-9` and dashes, up to 32 characters. |
 | `name` | What you see, up to 60 characters. |
-| `kind` | `url`: a web page, in its own Edge (or Chrome) window. `file`: a document, in its default app. |
+| `kind` | `url`: a web page, in its own browser window (Edge, Chrome or Brave). `file`: a document, in its default app. |
 | `target` | An `http(s)` address, or the full path of a document. |
 | `match` | Optional, for a `file`: text its window title contains (default: the file's name without the extension). |
+| `browser` | Optional, for a `url`: `edge`, `chrome` or `brave` (default: Edge, else Chrome). A fixed list: never a path or a command. Set it with `/dt browser <id> <name>`. |
 
 - A **web page** gets a browser profile of its own in `~/.claude/downtime/profiles/<id>`. Log in once, in that window: the browser keeps it. No password or cookie ever passes through the plugin.
 - A **document** opens in the app Windows associates with it. Its window is found by its title.
