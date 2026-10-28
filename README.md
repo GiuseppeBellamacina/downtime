@@ -5,11 +5,12 @@
 [![ci](https://github.com/GiuseppeBellamacina/downtime/actions/workflows/ci.yml/badge.svg)](https://github.com/GiuseppeBellamacina/downtime/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757.svg)](https://code.claude.com/docs/en/plugins)
-![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078d4.svg)
+![Platform: Windows](https://img.shields.io/badge/Windows-supported-0078d4.svg)
+![Platform: macOS](https://img.shields.io/badge/macOS-experimental-e8a33d.svg)
 
 Claude's longer tasks leave you waiting. `downtime` fills that time with whatever you pick, and gets out of the way when it is your turn again. It opens **real windows of your system**, because Claude Code's own screen cannot play video: so it works the same for Instagram, Netflix, a document or any web page, and nothing of the page passes through the plugin.
 
-**Windows only for now.** macOS and Linux are planned: see the [open issues](https://github.com/GiuseppeBellamacina/downtime/issues).
+**Windows is the supported system.** macOS is [experimental](#macos-experimental); Linux is planned: see the [open issues](https://github.com/GiuseppeBellamacina/downtime/issues).
 
 ## Install
 
@@ -27,7 +28,7 @@ claude plugin install downtime --marketplace GiuseppeBellamacina/downtime
 
 Where `/plugin` is not available (for example the VS Code extension), run the shell line, then `/reload-plugins` in the session.
 
-**Requirements:** a Claude Code build with plugin function hooks (mods); Windows 10 or 11 with Microsoft Edge (included) or Google Chrome. No Node.js, nothing to `npm install`.
+**Requirements:** a Claude Code build with plugin function hooks (mods); Windows 10 or 11 with Microsoft Edge (included), Google Chrome or Brave (or [macOS](#macos-experimental)). No Node.js, nothing to `npm install`.
 
 ## Quick start
 
@@ -144,13 +145,21 @@ It writes no file, opens no network connection, never touches the window of VS C
 
 ## Limits
 
-- **Windows only.** On other systems the commands say so instead of failing silently.
+- **Windows and macOS only**, macOS being experimental and without positioning. On other systems the commands say so instead of failing silently.
 - A window is placed only when it opens; reopening a minimized window leaves it where you put it. Placement is exact with display scaling (tried at 125%); several monitors and mixed scaling have not been tried yet.
 - A verification a site asks for (2FA, captcha) is yours to do in its window.
 - A document's window is found by its title: a viewer that does not show the file name there is not found; use the `match` field.
 - Closing the window of a web activity leaves the browser's own background processes running: normal for Edge and Chrome.
 - The plugin uses only the plugin hooks of Claude Code's mod API, never the `classic.*` ones. Some security setups skip those hooks, and a plugin that depended on one would stop working without a word.
 
+## macOS (experimental)
+
+macOS has its own script (`scripts/window-macos.sh`, with `scripts/window-macos.applescript`) that speaks the same contract as the Windows one. It was written **without a Mac to hand**: the logic is tested against stand-ins for the system tools, on every push, on macOS and Linux runners, but nobody has yet tried it on a real Mac. Treat it as a first version, and please report what you see.
+
+- **Permission.** Minimizing and restoring windows goes through System Events, which macOS lets an app do only after you allow it: *System Settings → Privacy & Security → Accessibility*, then switch on the app that runs Claude Code (Terminal, iTerm, VS Code…). Without it the commands say so, with these words.
+- **Works:** `open`, `minimize` and `restore`, the sound, web pages in Edge, Chrome or Brave (each with its own profile, as on Windows), documents, and applications (an `.app` or a program, with the same confirmation).
+- **Not yet:** positioning a window (`/dt position`, `/dt place`) and several monitors. A position is ignored when the window opens, and `/dt place` says it is not supported.
+- Requirements: macOS with Edge, Chrome or Brave installed in `/Applications` or `~/Applications` for web pages. The system's own `bash` (3.2) is enough.
 ## Troubleshooting
 
 | Symptom | Try |

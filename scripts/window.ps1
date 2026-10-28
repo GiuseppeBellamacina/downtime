@@ -84,8 +84,10 @@ public static class Win {
       # The activity's own browser profile is the key: every window of that profile, and no other.
       $dir = $Profile.Replace('/', '\')
       $names = if ($Browser) { @($exeNames[$Browser] + '.exe') } else { @('msedge.exe', 'chrome.exe') }
+      # The profile must end where the path ends: ...\instagram is not ...\instagram-2.
+      $sameProfile = New-Object System.Text.RegularExpressions.Regex ([regex]::Escape($dir) + '(?![A-Za-z0-9._-])')
       $pids = @(Get-CimInstance Win32_Process |
-          Where-Object { ($names -contains $_.Name) -and $_.CommandLine -and $_.CommandLine.Contains($dir) } |
+          Where-Object { ($names -contains $_.Name) -and $_.CommandLine -and $sameProfile.IsMatch($_.CommandLine) } |
           ForEach-Object { [uint32]$_.ProcessId })
       return @($all | Where-Object { $pids -contains $_.Pid })
     }

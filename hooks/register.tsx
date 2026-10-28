@@ -2,8 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Activity, Busy, DowntimeSettings } from '../types'
-import { BROWSERS, DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, commandLine, describePosition, find, isBusy, isUsable, launcher, parseActivities, parsePosition, shouldShow, showCommand, slug, words } from './activities'
-import type { Action } from './activities'
+import { BROWSERS, DEFAULTS, EMPTY_BUSY, PRESETS, check, clockTime, commandLine, describePosition, find, isBusy, isUsable, launcher, parseActivities, parsePosition, SCRIPTS, shouldShow, showCommand, slug, words } from './activities'
+import type { Action, System } from './activities'
 
 const PANE = 'downtime'
 const TOOL = 'mcp__downtime__window'
@@ -117,9 +117,20 @@ async function addActivity($: EngineInterface, name: string, target: string, mat
 
 type Result = { ok: boolean; text: string }
 
+/** Windows says so in its environment; the others are told by `uname`. */
+async function systemOf($: EngineInterface): Promise<System | 'other'> {
+  if ((await $.env.get('OS')) === 'Windows_NT') return 'windows'
+  const uname = (await $.process.run(['uname']).catch(() => ({ stdout: '' }))).stdout.trim()
+  return uname === 'Darwin' ? 'macos' : uname === 'Linux' ? 'linux' : 'other'
+}
+
+// A system whose script is not here yet says so, instead of failing without a word.
+const SUPPORTED: Record<System | 'other', boolean> = { windows: true, macos: true, linux: false, other: false }
+
 async function exec($: EngineInterface, action: Action, a?: Activity): Promise<Result> {
-  if ((await $.env.get('OS')) !== 'Windows_NT') return { ok: false, text: 'downtime works on Windows only, for now' }
-  const argv = launcher(action, a, `${$.plugin.root}/scripts/window.ps1`, `${await dirOf($)}/profiles/${a?.id ?? ''}`)
+  const system = await systemOf($)
+  if (!SUPPORTED[system] || system === 'other') return { ok: false, text: 'downtime works on Windows and macOS only, for now' }
+  const argv = launcher(action, a, `${$.plugin.root}/scripts/${SCRIPTS[system]}`, `${await dirOf($)}/profiles/${a?.id ?? ''}`, system)
   const run = await serial(() => $.process.run(argv, { timeoutMs: 25_000 })).catch(err => ({ exitCode: 1, stdout: '', stderr: String(err) }))
   const line = run.stdout.trim().split(/\r?\n/).filter(Boolean).pop() ?? ''
   if (line.startsWith('ok:')) return { ok: true, text: line.slice(3) }

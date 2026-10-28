@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import type { Activity } from '../types'
 
-import { DEFAULTS, EMPTY_BUSY, STALE_TASK_MS, check, commandLine, describePosition, find, isBusy, isUsable, launcher, matchOf, parseActivities, parsePosition, shouldShow, showCommand, slug, words } from '../hooks/activities'
+import { DEFAULTS, EMPTY_BUSY, SCRIPTS, STALE_TASK_MS, check, commandLine, describePosition, find, isBusy, isUsable, launcher, matchOf, parseActivities, parsePosition, shouldShow, showCommand, slug, words } from '../hooks/activities'
 
 const ig = { id: 'ig', name: 'Instagram Reels', kind: 'url', target: 'https://www.instagram.com/reels/' } as const
 const pdf = { id: 'pdf', name: 'Contratto', kind: 'file', target: 'C:\\Users\\me\\Documents\\contratto.pdf' } as const
@@ -65,6 +65,32 @@ test('an application reaches the script with its arguments percent-encoded, so n
   expect(JSON.parse(decodeURIComponent(encoded))).toEqual(hostile.args)
   expect(argv[argv.indexOf('-Target') + 1]).toBe(player.target)
   expect(launcher('open', { ...player, args: undefined }, 'S.ps1', 'P')).not.toContain('-AppArgs')
+})
+
+test('paths on macOS and Linux: a document is a full path, a program or an .app is never a document', async () => {
+  expect(check({ ...pdf, target: '/Users/me/Documents/contract.pdf' })).toMatchObject({ kind: 'file' })
+  expect(matchOf({ ...pdf, target: '/Users/me/Documents/contract.pdf' })).toBe('contract')
+  for (const bad of ['Documents/contract.pdf', '~/contract.pdf', '/Applications/Music.app', '/home/me/run.sh', '/home/me/x.command', '/home/me/a.AppImage', '/home/me/a.deb']) {
+    expect(typeof check({ ...pdf, target: bad })).toBe('string')
+  }
+  expect(check({ ...player, target: '/Applications/Music.app', args: ['--x'] })).toMatchObject({ kind: 'app', target: '/Applications/Music.app' })
+  expect(check({ ...player, target: '/usr/bin/player' })).toMatchObject({ kind: 'app' })
+  for (const bad of ['player', './player', '~/player', '/Applications/Terminal.app', '/usr/bin/bash', '/usr/bin/gnome-terminal', '/opt/Cursor.app', '/Applications/iTerm.app']) {
+    expect(typeof check({ ...player, target: bad })).toBe('string')
+  }
+  // A Windows path still needs its .exe.
+  expect(typeof check({ ...player, target: 'C:\\Player\\player' })).toBe('string')
+})
+
+test('each system gets its script and its own option style', async () => {
+  const win = launcher('open', player, 'S.ps1', 'P')
+  expect(win.slice(0, 7)).toEqual(['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'S.ps1'])
+  for (const system of ['macos', 'linux'] as const) {
+    const argv = launcher('open', { ...player, target: '/opt/player', position: 'left', monitor: 2, match: 'Library' }, 'S.sh', 'P', system)
+    expect(argv).toEqual(['bash', 'S.sh', '--action', 'open', '--kind', 'app', '--target', '/opt/player', '--match', 'Library', '--profile', 'P', '--arg', '--minimized', '--arg', 'my list', '--position', 'left', '--monitor', '2'])
+  }
+  expect(launcher('chime', undefined, 'S.sh', 'P', 'macos')).toEqual(['bash', 'S.sh', '--action', 'chime'])
+  expect(SCRIPTS).toEqual({ windows: 'window.ps1', macos: 'window-macos.sh', linux: 'window-linux.sh' })
 })
 
 test('a browser is one of a fixed list and only for web pages', async () => {

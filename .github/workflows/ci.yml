@@ -49,3 +49,24 @@ jobs:
 
       - name: Test
         run: claude plugin test .
+
+  # The scripts for macOS and Linux, against stand-ins for the system tools, on both systems.
+  unix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: |
+          command -v shellcheck > /dev/null || brew install shellcheck
+          shellcheck scripts/*.sh tests/unix/*.sh
+
+      - name: The scripts against stand-ins for the system tools
+        run: bash tests/unix/scripts.test.sh
+
+      - name: The AppleScript compiles
+        if: runner.os == 'macOS'
+        run: osacompile -o "$RUNNER_TEMP/window-macos.scpt" scripts/window-macos.applescript
