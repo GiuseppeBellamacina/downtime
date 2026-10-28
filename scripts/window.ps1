@@ -117,6 +117,13 @@ public static class Win {
     if ([Win]::IsIconic($h)) { [void][Win]::ShowWindowAsync($h, 9) }
   }
 
+  # Above the others, without taking the keyboard: topmost and straight back (SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE).
+  function Raise-Window($w) {
+    $h = [IntPtr]$w.Handle
+    [void][Win]::SetWindowPos($h, [IntPtr](-1), 0, 0, 0, 0, 0x13)
+    [void][Win]::SetWindowPos($h, [IntPtr](-2), 0, 0, 0, 0, 0x13)
+  }
+
   # Where the window goes, in screen pixels: a side of a monitor's work area (the taskbar left out), or the rectangle given.
   function Get-Rect {
     if ($Position -match '^(-?\d+),(-?\d+),(\d+),(\d+)$') {
@@ -175,7 +182,7 @@ public static class Win {
     Write-Output ('ok:minimized ' + $found.Count)
   }
   elseif ($Action -eq 'restore') {
-    foreach ($w in $found) { Restore-Window $w }
+    foreach ($w in $found) { Restore-Window $w; Raise-Window $w }
     Write-Output ('ok:restored ' + $found.Count)
   }
   elseif ($Action -eq 'place') {
@@ -183,7 +190,7 @@ public static class Win {
   }
   elseif ($found.Count -gt 0) {
     # Already open: it comes back where it was, wherever the user has put it since.
-    foreach ($w in $found) { Restore-Window $w }
+    foreach ($w in $found) { Restore-Window $w; Raise-Window $w }
     Write-Output 'ok:already open'
   }
   else {
