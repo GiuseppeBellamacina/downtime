@@ -43,6 +43,16 @@ The tests cover the rules and the events. The window handling is tried by hand w
 - one line on standard output: `ok:<what happened>` or `error:<why>`;
 - no files written, no network, never the window of the editor, a terminal or Claude.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull request, on Windows (the supported system today). It:
+
+1. fails if a `classic.*` hook shows up in `hooks/`;
+2. checks that `scripts/window.ps1` parses;
+3. installs the Claude Code CLI (`npm install -g @anthropic-ai/claude-code`) and runs `claude plugin validate .` and `claude plugin test .`.
+
+The same checks run on your machine with the commands under "Develop".
+
 ## Pull requests
 
 - One topic per PR, on its own branch (`feature/…` or `fix/…`), with a test for the behaviour it changes.

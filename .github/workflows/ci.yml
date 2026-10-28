@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Some security setups skip the classic hooks without a word: a plugin that depended on one would stop working.
+      - name: No classic hooks
+        shell: pwsh
+        run: |
+          $hits = Select-String -Path hooks/*.ts, hooks/*.tsx -Pattern 'classic\.'
+          if ($hits) {
+            $hits | ForEach-Object { "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+            exit 1
+          }
+
+      - name: The Windows script parses
+        shell: pwsh
+        run: |
+          $errors = $null; $tokens = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD/scripts/window.ps1", [ref]$tokens, [ref]$errors)
+          if ($errors.Count) { $errors | ForEach-Object { $_.Message }; exit 1 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate
+        run: claude plugin validate .
+
+      - name: Test
+        run: claude plugin test .
