@@ -2,6 +2,7 @@
 
 > While Claude works, `downtime` opens the windows you chose (a feed, a film, a PDF you have to read) and puts them down the moment Claude needs you or is done. Claude can open and minimize them too, when you ask.
 
+[![ci](https://github.com/GiuseppeBellamacina/downtime/actions/workflows/ci.yml/badge.svg)](https://github.com/GiuseppeBellamacina/downtime/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757.svg)](https://code.claude.com/docs/en/plugins)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078d4.svg)
