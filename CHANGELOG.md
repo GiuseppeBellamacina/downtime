@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- **`/dt log`**: the last things the plugin saw (turns, the opening timer, each action and its answer, permissions and questions). For when a window does not open by itself and nothing says why.
+
 ## 0.3.1
 
 - **Fixed**: a window already open but hidden behind others (a PDF behind the editor) was left there. `open` and `restore` now raise it above the others, without taking the keyboard.

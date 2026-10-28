@@ -385,6 +385,20 @@ test('after a permission the windows come back on their own', async ($, on) => {
   expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime', `open:${IG}`])
 })
 
+test('/dt log tells what happened, including an opening that failed', async ($, on) => {
+  const { clock } = engine(on)
+  await ready($)
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(6_000)
+  await done($)
+  await clock.advance(100)
+  const log = await cmd($, 'log')
+  expect(log).toMatch(/turn starts/)
+  expect(log).toMatch(/opens in 5 s/)
+  expect(log).toMatch(/open instagram-reels: ok:done/)
+  expect(log).toMatch(/Claude has finished/)
+})
+
 test('the windows open after 5 seconds of work unless the user chose another delay, and /dt sound switches the sound', async ($, on) => {
   const { clock, seen } = engine(on)
   await ready($)
