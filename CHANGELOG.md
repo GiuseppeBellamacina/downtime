@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- **Fixed**: after a permission prompt took the windows down, they came back only when the command that asked had finished. They now return, after the usual delay, as soon as the command starts.
+
 ## 0.2.0
 
 - **The command is `/dt`.** Claude Code ships a command called `/downtime`, so 0.1.0 could not register its command at all (the validator only warned). The plugin and the tool keep the name `downtime`.
