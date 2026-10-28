@@ -3,9 +3,11 @@ export type Activity = {
   /** Short and stable: a-z, 0-9 and dashes. */
   id: string
   name: string
-  kind: 'url' | 'file'
-  /** An http(s) address, or the absolute path of a document. */
+  kind: 'url' | 'file' | 'app'
+  /** An http(s) address, the full path of a document, or the full path of an .exe (an application). */
   target: string
+  /** For an application: its arguments, exactly as written, passed one by one. */
+  args?: string[]
   /** For a file: text its window's title holds (default: the file's name). */
   match?: string
   /** For a web page: the browser to use (default: Edge, else Chrome). */
@@ -54,6 +56,8 @@ declare module 'claude-code' {
     downtime: {
       activities: Activity[]
       settings: DowntimeSettings
+      /** The applications the user confirmed: id to the exact command line seen (a changed path or argument cancels it). */
+      confirmed: Record<string, string>
       /** Kept under a tag (see `busyA`): a version whose fields differ declines what an older one stored. The contract has no imports, so this is claude-code's `Shaped<Busy>` written out. */
       busy: { shape: string; value: Busy }
       /** The last thing the pane tells the user. */

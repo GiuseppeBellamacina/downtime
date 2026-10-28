@@ -19,6 +19,9 @@ export const BROWSERS = ['edge', 'chrome', 'brave'] as const
 /** The sides of a monitor's work area a window can take (`full` is all of it). */
 export const SIDES = ['left', 'right', 'top', 'bottom', 'full'] as const
 
+/** Programs that are the window the user works in: never an application. */
+export const NEVER_APPS = ['code', 'code - insiders', 'windowsterminal', 'powershell', 'pwsh', 'cmd', 'conhost', 'devenv', 'claude']
+
 const ID = /^[a-z0-9][a-z0-9-]{0,31}$/
 const CONTROL = /[\u0000-\u001f]/
 // A document, never a program: opening these would run them.
@@ -37,15 +40,23 @@ export const slug = (name: string) =>
 export function check(value: unknown): Activity | string {
   const a = value as Record<string, unknown> | null
   if (!a || typeof a !== 'object') return 'not an activity'
-  const { id, name, kind, target, match, browser, position, monitor } = a
+  const { id, name, kind, target, match, browser, position, monitor, args } = a
   if (typeof id !== 'string' || !ID.test(id)) return 'the id must be a-z, 0-9 and dashes (at most 32)'
   if (typeof name !== 'string' || !name.trim() || name.length > 60 || CONTROL.test(name)) return `${id}: the name must be 1 to 60 characters`
-  if (kind !== 'url' && kind !== 'file') return `${id}: kind must be "url" or "file"`
+  if (kind !== 'url' && kind !== 'file' && kind !== 'app') return `${id}: kind must be "url", "file" or "app"`
   if (typeof target !== 'string' || target.length > 2000 || CONTROL.test(target)) return `${id}: the target is missing or too long`
   if (kind === 'url' && !/^https?:\/\/[^\s"'<>`]+$/i.test(target)) return `${id}: an address must start with http:// or https://`
   if (kind === 'file') {
     if (!/^([A-Za-z]:[\\/]|\\\\)/.test(target) || /[*?<>|"]/.test(target)) return `${id}: a file needs its full path (C:\\...)`
     if (PROGRAMS.test(target)) return `${id}: that is a program, not a document: it would run, not open`
+  }
+  if (kind === 'app') {
+    if (!/^([A-Za-z]:[\\/]|\\\\)/.test(target) || /[*?<>|"]/.test(target) || !/\.exe$/i.test(target)) return `${id}: an application needs the full path of an .exe`
+    const program = (target.split(/[\\/]/).pop() ?? '').replace(/\.exe$/i, '').toLowerCase()
+    if (NEVER_APPS.includes(program)) return `${id}: that is the window you work in: it cannot be an application`
+  }
+  if (args !== undefined && (kind !== 'app' || !Array.isArray(args) || args.length > 20 || args.some(x => typeof x !== 'string' || x.length > 300 || CONTROL.test(x)))) {
+    return `${id}: "args" is for an application: up to 20 texts of up to 300 characters`
   }
   if (match !== undefined && (typeof match !== 'string' || match.length > 100 || match.startsWith('-') || CONTROL.test(match))) return `${id}: bad "match"`
   if (browser !== undefined && (kind !== 'url' || !(BROWSERS as readonly unknown[]).includes(browser))) {
@@ -69,6 +80,7 @@ export function check(value: unknown): Activity | string {
     name: name.trim(),
     kind,
     target,
+    ...(Array.isArray(args) && args.length ? { args: [...(args as string[])] } : {}),
     ...(typeof match === 'string' && match ? { match } : {}),
     ...(browser ? { browser: browser as (typeof BROWSERS)[number] } : {}),
     ...(place ? { position: place } : {}),
@@ -129,11 +141,20 @@ export function words(text: string): string[] {
 /** What a file's window title must hold. */
 export function matchOf(a: Activity): string {
   if (a.match) return a.match
-  if (a.kind === 'url') return ''
-  const file = a.target.split(/[\\/]/).pop() ?? ''
+  if (a.kind !== 'file') return ''
+  const file =a.target.split(/[\\/]/).pop() ?? ''
   const dot = file.lastIndexOf('.')
   return dot > 0 ? file.slice(0, dot) : file
 }
+
+/** What an application would run, exactly: the text the user confirms, and the one a confirmation is kept against. */
+export const commandLine = (a: Activity): string => JSON.stringify([a.target, ...(a.args ?? [])])
+
+/** The command as the user reads it, an argument with a space or a quote in double quotes. */
+export const showCommand = (a: Activity): string => [a.target, ...(a.args ?? [])].map(x => (/[\s"]/.test(x) ? `"${x}"` : x)).join(' ')
+
+/** An application runs only when the user confirmed that exact command; the other kinds need no confirmation. */
+export const isUsable = (a: Activity, confirmed: Record<string, string>): boolean => a.kind !== 'app' || confirmed[a.id] === commandLine(a)
 
 export type Action = 'open' | 'minimize' | 'restore' | 'place' | 'chime'
 
@@ -159,10 +180,14 @@ export function parsePosition(args: string[]): Pick<Activity, 'position' | 'moni
 export function launcher(action: Action, a: Activity | undefined, script: string, profileDir: string): string[] {
   const base = ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Action', action]
   if (!a) return base
+  // Never an empty argument: on some command lines it vanishes, and the next option would be read as its value.
+  const match = matchOf(a)
   return [
     ...base,
-    '-Kind', a.kind, '-Target', a.target, '-Match', matchOf(a), '-Profile', profileDir,
+    '-Kind', a.kind, '-Target', a.target, ...(match ? ['-Match', match] : []), '-Profile', profileDir,
     ...(a.browser ? ['-Browser', a.browser] : []),
+    // Percent-encoded JSON: nothing in it is a quote, a space or an option for any command line to read.
+    ...(a.kind === 'app' && a.args?.length ? ['-AppArgs', encodeURIComponent(JSON.stringify(a.args))] : []),
     ...(a.position ? ['-Position', positionArg(a.position)] : []),
     ...(a.monitor ? ['-Monitor', String(a.monitor)] : []),
   ]

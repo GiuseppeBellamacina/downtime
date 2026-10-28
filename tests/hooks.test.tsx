@@ -156,7 +156,94 @@ test('a web page opens in the browser the user chose, and goes back to the defau
   expect(browserArg()).toBeUndefined()
 
   await cmd($, 'add "Note" C:\\Users\\me\\note.txt')
-  expect(await cmd($, 'browser note chrome')).toBe('Note is a document: a browser applies to web pages only.')
+  expect(await cmd($, 'browser note chrome')).toBe('Note is not a web page: a browser applies to web pages only.')
+})
+
+const PLAYER = 'C:\\Program Files\\Player\\player.exe'
+const ADD_PLAYER = `add-app "Music Player" "${PLAYER}" --minimized "my list"`
+
+test('an application cannot run until the user confirmed it, and a changed command cancels the confirmation', async ($, on) => {
+  const { runs, files } = engine(on)
+  await ready($)
+  expect(await cmd($, ADD_PLAYER)).toBe(`Added "Music Player" (music-player), but it cannot run yet. It would run exactly:\n  "${PLAYER}" --minimized "my list"\nIf that is what you want: /dt confirm music-player`)
+
+  // Stored, but not usable: not by hand, not selected, not for Claude.
+  expect(await cmd($, 'open music-player')).toBe('Not done: Music Player is an application you have not confirmed: /dt confirm music-player')
+  expect(await cmd($, 'list')).toMatch(/\[ \] music-player: Music Player \(app "C:\\Program Files\\Player\\player\.exe" --minimized "my list", NOT CONFIRMED\)/)
+  await cmd($, 'use all')
+  expect(String((await win($, { action: 'list' })).result)).toBe('Switched on: instagram-reels (Instagram Reels)')
+  expect(runs.length).toBe(0)
+
+  expect(await cmd($, 'confirm music-player')).toBe(`Confirmed and switched on: Music Player may run exactly\n  "${PLAYER}" --minimized "my list"`)
+  expect(String((await win($, { action: 'list' })).result)).toBe('Switched on: instagram-reels (Instagram Reels), music-player (Music Player)')
+  expect(await cmd($, 'open music-player')).toBe('Music Player: done')
+  const argv = runs.at(-1)!
+  expect(argv[argv.indexOf('-Kind') + 1]).toBe('app')
+  expect(argv[argv.indexOf('-Target') + 1]).toBe(PLAYER)
+  expect(JSON.parse(decodeURIComponent(argv[argv.indexOf('-AppArgs') + 1]!))).toEqual(['--minimized', 'my list'])
+
+  // Somebody edits the file: the arguments change, and the confirmation no longer fits.
+  const path = Object.keys(files).find(p => p.endsWith('activities.json'))!
+  const edited = JSON.parse(files[path]!)
+  edited.find((a: { id: string }) => a.id === 'music-player').args = ['--something-else']
+  files[path] = JSON.stringify(edited)
+  await cmd($, 'reload')
+  expect(await cmd($, 'list')).toMatch(/NOT CONFIRMED/)
+  expect(await cmd($, 'open music-player')).toMatch(/^Not done: .* not confirmed/)
+  expect(String((await win($, { action: 'list' })).result)).toBe('Switched on: instagram-reels (Instagram Reels)')
+
+  // Removing it forgets the confirmation: adding the same command again starts unconfirmed.
+  await cmd($, 'remove music-player')
+  await cmd($, ADD_PLAYER)
+  expect(await cmd($, 'open music-player')).toMatch(/^Not done: .* not confirmed/)
+})
+
+test('an application is a program the user listed: a wrong path, the editor or a terminal are refused', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+  expect(await cmd($, 'add-app "Code" C:\\Users\\me\\AppData\\Local\\Code.exe')).toMatch(/Not added: .*window you work in/)
+  expect(await cmd($, 'add-app "Shell" C:\\Windows\\System32\\cmd.exe /c calc')).toMatch(/Not added: .*window you work in/)
+  expect(await cmd($, 'add-app "Rel" player.exe')).toMatch(/Not added: .*full path/)
+  expect(await cmd($, 'add-app "Doc" C:\\Docs\\a.pdf')).toMatch(/Not added: .*\.exe/)
+  expect(await cmd($, 'add-app "Only a name"')).toMatch(/^Usage: \/dt add-app/)
+  expect(await cmd($, 'confirm nothing')).toBe('no activity "nothing"')
+  expect(await cmd($, 'list')).toMatch(/No activities yet/)
+  // The plain add is still for documents and pages: a program there is refused.
+  expect(await cmd($, `add "Sneaky" "${PLAYER}"`)).toMatch(/Not added: .*program, not a document/)
+})
+
+test('opening an application asks the user every time, while the rest of the tool stays free', async ($, on) => {
+  const { seen } = engine(on)
+  await ready($)
+  await cmd($, ADD_PLAYER)
+  await cmd($, 'confirm music-player')
+  const check = (input: Record<string, unknown>) => $.tool.check({ tool: TOOL, input } as never)
+
+  const open = await check({ action: 'open', activity: 'music' })
+  expect(open.decision).toBe('ask')
+  expect(open.reason).toMatch(/start the application "Music Player": "C:\\Program Files\\Player\\player\.exe" --minimized "my list"/)
+  for (const input of [{ action: 'minimize', activity: 'music' }, { action: 'restore', activity: 'music' }, { action: 'list' }, { action: 'open', activity: 'instagram' }, { action: 'open', activity: 'nothing' }]) {
+    expect((await check(input)).decision).toBe('allow')
+  }
+  // Not confirmed, not listed for Claude at all: nothing to ask about.
+  await cmd($, 'add-app "Other" C:\\Other\\other.exe')
+  expect((await check({ action: 'open', activity: 'other' })).decision).toBe('allow')
+  expect(String((await win($, { action: 'open', activity: 'other' })).result)).toMatch(/^Not done: no switched-on activity/)
+  expect(seen().filter(s => s.startsWith('open')).length).toBe(0)
+})
+
+test('a confirmed application opens by itself like the others, and goes down when Claude needs the user', async ($, on) => {
+  const { clock, seen } = engine(on)
+  await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+  await cmd($, ADD_PLAYER)
+  await cmd($, 'confirm music-player')
+  await cmd($, 'on')
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(21_000)
+  expect(seen()).toEqual([`open:${PLAYER}`])
+  await done($)
+  await clock.advance(100)
+  expect(seen()).toEqual([`open:${PLAYER}`, `minimize:${PLAYER}`, 'chime'])
 })
 
 test('a position is set by command, goes to the script, and can be reapplied or removed', async ($, on) => {

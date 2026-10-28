@@ -5,8 +5,10 @@
 # given a name for. It prints one line: "ok:<what happened>" or "error:<why>".
 param(
   [Parameter(Mandatory = $true)][ValidateSet('open', 'minimize', 'restore', 'place', 'chime')][string]$Action,
-  [ValidateSet('url', 'file')][string]$Kind,
+  [ValidateSet('url', 'file', 'app')][string]$Kind,
   [string]$Target,
+  # An application's arguments: a JSON list of texts, percent-encoded, so no command line can read any of it.
+  [string]$AppArgs,
   [string]$Match,
   [string]$Profile,
   [ValidateSet('edge', 'chrome', 'brave')][string]$Browser,
@@ -86,6 +88,15 @@ public static class Win {
           Where-Object { ($names -contains $_.Name) -and $_.CommandLine -and $_.CommandLine.Contains($dir) } |
           ForEach-Object { [uint32]$_.ProcessId })
       return @($all | Where-Object { $pids -contains $_.Pid })
+    }
+    if ($Kind -eq 'app') {
+      # Every window of the program's processes, narrowed by the title when one was given.
+      $program = [IO.Path]::GetFileNameWithoutExtension($Target)
+      if ($neverThese -contains $program) { throw 'that program is the window you work in: refused' }
+      $pids = @(Get-Process -Name $program -ErrorAction SilentlyContinue | ForEach-Object { [uint32]$_.Id })
+      $mine = @($all | Where-Object { $pids -contains $_.Pid })
+      if ($Match) { $mine = @($mine | Where-Object { $_.Title.IndexOf($Match, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }) }
+      return $mine
     }
     if (-not $Match) { throw 'this document has no text to find its window by' }
     $named = @($all | Where-Object { $_.Title.IndexOf($Match, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 })
@@ -184,6 +195,15 @@ public static class Win {
         try { Start-Process -FilePath $exe -ArgumentList $browserArgs; $started = $true; break } catch { }
       }
       if (-not $started) { throw ('could not start ' + ($candidates -join ' or ') + ': is it installed?') }
+    }
+    elseif ($Kind -eq 'app') {
+      $path = $Target.Replace('/', '\')
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw ('no such program: ' + $path) }
+      # The arguments come as written: each one reaches the program whole, quoted only so that it stays one argument.
+      $argList = @()
+      if ($AppArgs) { $argList = @(ConvertFrom-Json -InputObject ([Uri]::UnescapeDataString($AppArgs))) }
+      $quoted = @($argList | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { [string]$_ } })
+      if ($quoted.Count -gt 0) { Start-Process -FilePath $path -ArgumentList $quoted } else { Start-Process -FilePath $path }
     }
     else {
       $path = $Target.Replace('/', '\')

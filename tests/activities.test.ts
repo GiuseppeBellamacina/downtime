@@ -1,6 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, EMPTY_BUSY, STALE_TASK_MS, check, describePosition, find, isBusy, launcher, matchOf, parseActivities, parsePosition, shouldShow, slug, words } from '../hooks/activities'
+import type { Activity } from '../types'
+
+import { DEFAULTS, EMPTY_BUSY, STALE_TASK_MS, check, commandLine, describePosition, find, isBusy, isUsable, launcher, matchOf, parseActivities, parsePosition, shouldShow, showCommand, slug, words } from '../hooks/activities'
 
 const ig = { id: 'ig', name: 'Instagram Reels', kind: 'url', target: 'https://www.instagram.com/reels/' } as const
 const pdf = { id: 'pdf', name: 'Contratto', kind: 'file', target: 'C:\\Users\\me\\Documents\\contratto.pdf' } as const
@@ -17,6 +19,52 @@ test('only an address and a document are accepted, never a program or a script',
   expect(typeof check({ ...pdf, match: '-Action' })).toBe('string')
   expect(typeof check({ ...ig, id: 'Has Space' })).toBe('string')
   expect(typeof check({ ...ig, kind: 'app' })).toBe('string')
+})
+
+const player: Activity = { id: 'player', name: 'Music', kind: 'app', target: 'C:\\Program Files\\Player\\player.exe', args: ['--minimized', 'my list'] }
+
+test('an application is the full path of an .exe with plain arguments, and never the window the user works in', async () => {
+  // A path with spaces, and an argument that looks like an option, are fine: they are stored and passed as written.
+  expect(check(player)).toEqual(player)
+  expect(check({ ...player, args: undefined })).toEqual({ id: 'player', name: 'Music', kind: 'app', target: player.target })
+  for (const bad of ['player.exe', 'C:\\Player\\player.bat', 'C:\\Player\\player', 'C:\\Player\\*.exe', 'C:\\Player\\p"x.exe', 'https://a.com/p.exe']) {
+    expect(typeof check({ ...player, target: bad })).toBe('string')
+  }
+  for (const program of ['Code', 'code - insiders', 'WindowsTerminal', 'PowerShell', 'pwsh', 'CMD', 'conhost', 'devenv', 'claude']) {
+    expect(check({ ...player, target: `C:\\x\\${program}.EXE` })).toMatch(/window you work in/)
+  }
+  const many = Array.from({ length: 21 }, () => 'a')
+  for (const bad of [many, ['line\nbreak'], ['x'.repeat(301)], [7], 'not a list']) expect(typeof check({ ...player, args: bad })).toBe('string')
+  expect(typeof check({ ...ig, args: ['--x'] })).toBe('string')
+  expect(typeof check({ ...pdf, args: ['--x'] })).toBe('string')
+  expect(typeof check({ ...player, browser: 'edge' })).toBe('string')
+  // An application can be placed and matched by title like the others.
+  expect(check({ ...player, position: 'left', match: 'Library' })).toEqual({ ...player, position: 'left', match: 'Library' })
+  expect(matchOf(player)).toBe('')
+})
+
+test('an application runs only after the user confirmed that exact command', async () => {
+  expect(commandLine(player)).toBe('["C:\\\\Program Files\\\\Player\\\\player.exe","--minimized","my list"]')
+  expect(showCommand(player)).toBe('"C:\\Program Files\\Player\\player.exe" --minimized "my list"')
+  expect(isUsable(player, {})).toBe(false)
+  expect(isUsable(player, { player: commandLine(player) })).toBe(true)
+  // A changed path or argument cancels it.
+  expect(isUsable({ ...player, args: ['--other'] }, { player: commandLine(player) })).toBe(false)
+  expect(isUsable({ ...player, target: 'C:\\Other\\player.exe' }, { player: commandLine(player) })).toBe(false)
+  expect(isUsable({ ...player, args: undefined }, { player: commandLine(player) })).toBe(false)
+  // The other kinds need no confirmation.
+  expect(isUsable(ig, {})).toBe(true)
+  expect(isUsable(pdf, {})).toBe(true)
+})
+
+test('an application reaches the script with its arguments percent-encoded, so no command line can read them', async () => {
+  const hostile = { ...player, args: ['--x=1 & calc', 'a "b" c', '$(whoami)', '`ls`', 'C:\\p q\\r', '--', '%PATH%'] }
+  const argv = launcher('open', hostile, 'S.ps1', 'P')
+  const encoded = argv[argv.indexOf('-AppArgs') + 1]!
+  expect(/^[A-Za-z0-9%\-_.!~*'()]+$/.test(encoded)).toBe(true)
+  expect(JSON.parse(decodeURIComponent(encoded))).toEqual(hostile.args)
+  expect(argv[argv.indexOf('-Target') + 1]).toBe(player.target)
+  expect(launcher('open', { ...player, args: undefined }, 'S.ps1', 'P')).not.toContain('-AppArgs')
 })
 
 test('a browser is one of a fixed list and only for web pages', async () => {
@@ -94,7 +142,11 @@ test('words keep a quoted name whole; names become short ids; the command line i
   expect(matchOf({ ...pdf, match: 'Contract' })).toBe('Contract')
   expect(launcher('open', ig, 'S.ps1', 'P')).toEqual([
     'powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'S.ps1',
-    '-Action', 'open', '-Kind', 'url', '-Target', 'https://www.instagram.com/reels/', '-Match', '', '-Profile', 'P',
+    '-Action', 'open', '-Kind', 'url', '-Target', 'https://www.instagram.com/reels/', '-Profile', 'P',
   ])
+  // No argument is ever empty, and a document's title text goes only when there is one.
+  for (const a of [ig, pdf, player, { ...pdf, match: 'Contract' }]) expect(launcher('open', a, 'S.ps1', 'P').every(x => x !== '')).toBe(true)
+  expect(launcher('open', pdf, 'S.ps1', 'P')).toContain('contratto')
+  expect(launcher('open', ig, 'S.ps1', 'P')).not.toContain('-Match')
   expect(launcher('chime', undefined, 'S.ps1', 'P').slice(-2)).toEqual(['-Action', 'chime'])
 })
