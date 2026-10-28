@@ -1,7 +1,7 @@
 // Pure functions: the user's list of activities, what to open and when. No engine here, so they are tested alone.
 import type { Activity, Busy, DowntimeSettings } from '../types'
 
-export const DEFAULTS: DowntimeSettings = { enabled: false, selected: [], delaySec: 5, minimizeOnAsk: true, reopen: true, chime: true }
+export const DEFAULTS: DowntimeSettings = { enabled: false, selected: [], delaySec: 5, minimizeOnAsk: true, reopen: true, chime: true, hideOnPermission: false }
 export const EMPTY_BUSY: Busy = { turn: false, agents: [], tasks: [], needsUser: false, snoozeUntil: 0, shown: false }
 
 /** Ready to add with one press: the two the user named. */

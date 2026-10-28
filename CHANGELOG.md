@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+
+- **A permission prompt no longer takes the windows down.** Work that asks at every command opened and closed them at every one. Now only a question, a plan to approve and the end of the work do. `/dt permission on` brings the old behaviour back (the windows then return after the delay).
+
 ## 0.4.0
 
 - **`/dt reset`**: says what it would remove; `/dt reset yes` puts downtime back as just installed (the list, the settings, the confirmed applications, the browser profiles with their logins, the log and any snooze). Windows that are open stay open.
