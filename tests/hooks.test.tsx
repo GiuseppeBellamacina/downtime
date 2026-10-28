@@ -25,7 +25,12 @@ function engine(on: On, system: 'Windows_NT' | 'Darwin' | 'Linux' | 'FreeBSD' = 
     runs.push([...e.argv])
     return { value: { exitCode: 0, stdout: 'ok:done\n', stderr: '' } } as never
   })
-  on('tool.call', () => ({ result: { ok: true } }))
+  // A tool that takes its time: what a test puts here runs while the call is still going.
+  const tool: { while?: () => Promise<void> } = {}
+  on('tool.call', async () => {
+    await tool.while?.()
+    return { result: { ok: true } }
+  })
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('agent.spawn', () => ({ model: 'claude-sonnet-5-5', agentId: 'agent-1' }))
@@ -37,7 +42,7 @@ function engine(on: On, system: 'Windows_NT' | 'Darwin' | 'Linux' | 'FreeBSD' = 
     return i < 0 ? undefined : argv[i + 1]
   }
   const seen = () => runs.map(argv => `${flag(argv, 'action')}` + (flag(argv, 'target') ? `:${flag(argv, 'target')}` : ''))
-  return { files, runs, clock, seen, registered, flag }
+  return { files, runs, clock, seen, registered, flag, tool }
 }
 
 const cmd = async ($: Engine, args: string) =>
@@ -366,4 +371,24 @@ test('a permission asked of the user takes the windows down', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: 'rm x' } as never)
   await clock.advance(100)
   expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime'])
+})
+
+test('once the user answered a permission, the windows come back while the tool still runs', async ($, on) => {
+  const { clock, seen, tool } = engine(on)
+  // The first call waits for the user; the engine runs it once they allowed it.
+  on('tool.check', (_, e) => ({ decision: JSON.stringify(e).includes('ask me') ? ('ask' as const) : ('allow' as const) }))
+  let during: string[] = []
+  await ready($)
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(21_000)
+  await $.tool.call({ tool: 'Bash', command: 'ask me' } as never)
+  await clock.advance(100)
+  expect(seen()).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime'])
+  // The user allowed it: the command starts, and the window is back after the delay, long before it ends.
+  tool.while = async () => {
+    await clock.advance(21_000)
+    during = seen()
+  }
+  await $.tool.call({ tool: 'Bash', command: 'sleep 60' } as never)
+  expect(during).toEqual([`open:${IG}`, `minimize:${IG}`, 'chime', `open:${IG}`])
 })

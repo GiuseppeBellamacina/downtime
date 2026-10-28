@@ -369,17 +369,17 @@ export const register: Register = on => {
 
   on('tool.call', async ($, e, next) => {
     if (e.tool === TOOL) return { result: await answerTool($, e as unknown as Record<string, unknown>) }
+    // A call that starts after the user was asked means they answered: Claude goes on, so the windows come back now, not when a long command ends.
+    if ((await read($, busyA)).needsUser) {
+      await setBusy($, b => ({ ...b, needsUser: false }))
+      if ((await read($, settingsA)).reopen) await scheduleShow($)
+    }
     const ran = await next(e)
     const result = (ran as { result?: Record<string, unknown> }).result
     const task = typeof result?.backgroundTaskId === 'string' ? result.backgroundTaskId : e.tool === 'Monitor' && typeof result?.taskId === 'string' ? result.taskId : ''
     if (task) {
       const at = await $.clock.now()
       await setBusy($, b => ({ ...b, tasks: [...b.tasks.filter(t => t.id !== task), { id: task, at }].slice(-20) }))
-    }
-    // A tool that runs after the user was asked means they answered: Claude goes on.
-    if (ran.deny === undefined && (await read($, busyA)).needsUser) {
-      await setBusy($, b => ({ ...b, needsUser: false }))
-      if ((await read($, settingsA)).reopen) await scheduleShow($)
     }
     return ran
   })
