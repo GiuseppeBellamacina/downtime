@@ -4,7 +4,9 @@
 
 - `hooks/register.tsx`: the hooks module: the events, the `/dt` command and pane, Claude's `window` tool, and the runner that calls the script.
 - `hooks/activities.ts`: pure functions: what an activity may be, when the windows should be up, the script's command line. No engine in it, so it is tested alone.
-- `scripts/window.ps1`: the Windows side. One entry point, `-Action open|minimize|restore|chime`.
+- `scripts/window.ps1`: the Windows side. One entry point, `-Action open|minimize|restore|place|chime`.
+- `scripts/window-macos.sh` and `scripts/window-macos.applescript`: the macOS side, the same contract with `--action` style options.
+- `tests/unix/scripts.test.sh`: tries the macOS (and Linux) script against stand-ins for the system tools; runs anywhere with bash.
 - `types/index.d.ts`: the contract of the plugin's state.
 - `tests/`: `activities.test.ts` (the rules) and `hooks.test.tsx` (the events, with a mock engine).
 
@@ -21,12 +23,12 @@
 
 ```bash
 git clone https://github.com/GiuseppeBellamacina/downtime
-claude plugin validate ./dt
-claude plugin test ./dt
-claude --plugin-dir ./dt        # try it in a session
+claude plugin validate ./downtime
+claude plugin test ./downtime
+claude --plugin-dir ./downtime      # try it in a session
 ```
 
-The tests cover the rules and the events. The window handling is tried by hand with a harmless activity:
+The tests cover the rules and the events (`tests/unix/scripts.test.sh` the macOS and Linux scripts: `bash tests/unix/scripts.test.sh`). The window handling is tried by hand with a harmless activity:
 
 ```text
 /dt add "Note" C:\path\to\a\note.txt
@@ -37,11 +39,12 @@ The tests cover the rules and the events. The window handling is tried by hand w
 
 ## Adding another system
 
-`exec()` in `hooks/register.tsx` is where the system is chosen. A new system brings its own script with the same contract as `scripts/window.ps1`:
+`systemOf()` and `exec()` in `hooks/register.tsx` choose the system (Windows says so in its environment, the others are told by `uname`), `SUPPORTED` says which have a script, and `SCRIPTS` and `launcher()` in `hooks/activities.ts` say which script and which options. A new system brings its own script with the same contract as `scripts/window.ps1`:
 
-- the same actions, `open`, `minimize`, `restore` and `chime`, and the same arguments (`kind`, `target`, `match`, `profile`);
+- the same actions, `open`, `minimize`, `restore`, `place` and `chime`, and the same arguments (`kind`, `target`, `match`, `profile`, `browser`, `position`, `monitor`, and for an application its arguments: one `--arg` each on macOS and Linux). An action it cannot do says so, in words;
 - one line on standard output: `ok:<what happened>` or `error:<why>`;
-- no files written, no network, never the window of the editor, a terminal or Claude.
+- no files written, no network, never the window of the editor, a terminal or Claude;
+- tested in `tests/unix/scripts.test.sh` with stand-ins for the system tools, and tried by hand on the real system before it is called supported. Until then it is marked experimental in the README.
 
 ## Continuous integration
 

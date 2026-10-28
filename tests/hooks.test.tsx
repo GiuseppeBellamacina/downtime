@@ -6,10 +6,11 @@ const TOOL = 'mcp__downtime__window'
 const IG = 'https://www.instagram.com/reels/'
 
 // The engine beneath the plugin: every window action lands in `runs`, and answers like the script would.
-function engine(on: On, os = 'Windows_NT') {
+function engine(on: On, system: 'Windows_NT' | 'Darwin' | 'Linux' | 'FreeBSD' = 'Windows_NT') {
   const clock = mock.clock(on, { now: 1_000_000 })
   mock.store(on)
-  mock.env(on, { USERPROFILE: 'C:/Users/test', OS: os })
+  // Windows says so in its environment; the others are told by `uname`.
+  mock.env(on, system === 'Windows_NT' ? { USERPROFILE: 'C:/Users/test', OS: 'Windows_NT' } : { HOME: '/home/test' })
   const files: Record<string, string> = {}
   const runs: string[][] = []
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -20,6 +21,7 @@ function engine(on: On, os = 'Windows_NT') {
   on('ui.notify', () => ({ value: { isSent: true, channel: 'test' } }) as never)
   on('ui.toast', () => ({ value: undefined }))
   on('process.run', (_, e) => {
+    if (e.argv[0] === 'uname') return { value: { exitCode: 0, stdout: `${system}\n`, stderr: '' } } as never
     runs.push([...e.argv])
     return { value: { exitCode: 0, stdout: 'ok:done\n', stderr: '' } } as never
   })
@@ -29,8 +31,13 @@ function engine(on: On, os = 'Windows_NT') {
   on('agent.spawn', () => ({ model: 'claude-sonnet-5-5', agentId: 'agent-1' }))
   on('fs.read', (_, e) => (e.path in files ? { value: files[e.path]! } : Promise.reject(new Error('missing'))))
   on('fs.write', (_, e) => ((files[e.path] = e.text), { value: undefined }))
-  const seen = () => runs.map(argv => argv[argv.indexOf('-Action') + 1] + (argv.includes('-Target') ? `:${argv[argv.indexOf('-Target') + 1]}` : ''))
-  return { files, runs, clock, seen, registered }
+  // What each run was asked, whatever the system's option style (-Action or --action).
+  const flag = (argv: string[], name: string) => {
+    const i = argv.findIndex(x => x.toLowerCase().replace(/^-+/, '') === name)
+    return i < 0 ? undefined : argv[i + 1]
+  }
+  const seen = () => runs.map(argv => `${flag(argv, 'action')}` + (flag(argv, 'target') ? `:${flag(argv, 'target')}` : ''))
+  return { files, runs, clock, seen, registered, flag }
 }
 
 const cmd = async ($: Engine, args: string) =>
@@ -313,12 +320,41 @@ test('a snooze needs minutes between 1 and 720', async ($, on) => {
   await clock.advance(1_000)
 })
 
-test('off Windows it says so instead of failing silently', async ($, on) => {
-  const { runs } = engine(on, 'Linux')
+test('on macOS the actions go to the macOS script, in its option style, one --arg for each argument', async ($, on) => {
+  const { runs, flag, seen, clock } = engine(on, 'Darwin')
   await ready($)
-  expect(await cmd($, 'open instagram')).toMatch(/Not done: .*Windows only/)
-  expect(runs.length).toBe(0)
+  expect(await cmd($, 'open instagram')).toBe('Instagram Reels: done')
+  const argv = runs.at(-1)!
+  expect(argv[0]).toBe('bash')
+  expect(argv[1]!.endsWith('/scripts/window-macos.sh')).toBe(true)
+  expect([flag(argv, 'action'), flag(argv, 'kind'), flag(argv, 'target'), flag(argv, 'profile')]).toEqual(['open', 'url', IG, '/home/test/.claude/downtime/profiles/instagram-reels'])
+  expect(argv.some(x => x.startsWith('-') && !x.startsWith('--'))).toBe(false)
+  expect(argv).not.toContain('powershell')
+
+  await cmd($, 'add-app "Music" /Applications/Music.app --minimized "my list"')
+  await cmd($, 'confirm music')
+  await cmd($, 'open music')
+  const app = runs.at(-1)!
+  expect(app.slice(app.indexOf('--arg'))).toEqual(['--arg', '--minimized', '--arg', 'my list'])
+  expect(app.some(x => x === '--app-args')).toBe(false)
+
+  // The automatic opening and the going down work the same.
+  await $.turn.start({ text: 'x', turnId: 't1' })
+  await clock.advance(21_000)
+  await done($)
+  await clock.advance(100)
+  expect(seen()).toContain(`minimize:${IG}`)
+  expect(seen()).toContain('minimize:/Applications/Music.app')
 })
+
+for (const system of ['Linux', 'FreeBSD'] as const) {
+  test(`${system}: a system whose script is not here yet says so instead of failing silently`, async ($, on) => {
+    const { runs } = engine(on, system)
+    await ready($)
+    expect(await cmd($, 'open instagram')).toMatch(/Not done: .*Windows and macOS only/)
+    expect(runs.length).toBe(0)
+  })
+}
 
 test('a permission asked of the user takes the windows down', async ($, on) => {
   const { clock, seen } = engine(on)

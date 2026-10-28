@@ -19,13 +19,20 @@ export const BROWSERS = ['edge', 'chrome', 'brave'] as const
 /** The sides of a monitor's work area a window can take (`full` is all of it). */
 export const SIDES = ['left', 'right', 'top', 'bottom', 'full'] as const
 
-/** Programs that are the window the user works in: never an application. */
-export const NEVER_APPS = ['code', 'code - insiders', 'windowsterminal', 'powershell', 'pwsh', 'cmd', 'conhost', 'devenv', 'claude']
+/** Programs that are the window the user works in, on any system: never an application. */
+export const NEVER_APPS = [
+  'code', 'code - insiders', 'cursor', 'devenv', 'claude',
+  'windowsterminal', 'powershell', 'pwsh', 'cmd', 'conhost',
+  'terminal', 'iterm', 'iterm2', 'gnome-terminal', 'konsole', 'xterm', 'alacritty', 'kitty', 'wezterm', 'tmux', 'bash', 'zsh', 'sh', 'fish',
+]
 
 const ID = /^[a-z0-9][a-z0-9-]{0,31}$/
 const CONTROL = /[\u0000-\u001f]/
 // A document, never a program: opening these would run them.
-const PROGRAMS = /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|msi|msc|scr|lnk|cpl|hta|reg|dll|jar|appx|url)$/i
+const PROGRAMS = /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|msi|msc|scr|lnk|cpl|hta|reg|dll|jar|appx|url|sh|command|app|pkg|dmg|run|bin|appimage|desktop|deb|rpm|workflow)$/i
+// A full path: C:\..., \\server\..., or /... on macOS and Linux.
+const WINDOWS_PATH = /^([A-Za-z]:[\\/]|\\\\)/
+const absolute = (p: string) => WINDOWS_PATH.test(p) || p.startsWith('/')
 
 export const slug = (name: string) =>
   name
@@ -47,12 +54,15 @@ export function check(value: unknown): Activity | string {
   if (typeof target !== 'string' || target.length > 2000 || CONTROL.test(target)) return `${id}: the target is missing or too long`
   if (kind === 'url' && !/^https?:\/\/[^\s"'<>`]+$/i.test(target)) return `${id}: an address must start with http:// or https://`
   if (kind === 'file') {
-    if (!/^([A-Za-z]:[\\/]|\\\\)/.test(target) || /[*?<>|"]/.test(target)) return `${id}: a file needs its full path (C:\\...)`
+    if (!absolute(target) || /[*?<>|"]/.test(target)) return `${id}: a file needs its full path (C:\\... or /...)`
     if (PROGRAMS.test(target)) return `${id}: that is a program, not a document: it would run, not open`
   }
   if (kind === 'app') {
-    if (!/^([A-Za-z]:[\\/]|\\\\)/.test(target) || /[*?<>|"]/.test(target) || !/\.exe$/i.test(target)) return `${id}: an application needs the full path of an .exe`
-    const program = (target.split(/[\\/]/).pop() ?? '').replace(/\.exe$/i, '').toLowerCase()
+    // On Windows an application is an .exe; on macOS and Linux a program or an .app, the script checks it runs.
+    if (!absolute(target) || /[*?<>|"]/.test(target) || (WINDOWS_PATH.test(target) && !/\.exe$/i.test(target))) {
+      return `${id}: an application needs the full path of an .exe (C:\\...) or, on macOS and Linux, of a program or an .app (/...)`
+    }
+    const program = (target.split(/[\\/]/).pop() ?? '').replace(/\.(exe|app)$/i, '').toLowerCase()
     if (NEVER_APPS.includes(program)) return `${id}: that is the window you work in: it cannot be an application`
   }
   if (args !== undefined && (kind !== 'app' || !Array.isArray(args) || args.length > 20 || args.some(x => typeof x !== 'string' || x.length > 300 || CONTROL.test(x)))) {
@@ -176,19 +186,33 @@ export function parsePosition(args: string[]): Pick<Activity, 'position' | 'moni
   return monitor === undefined ? { position } : { position, monitor: Number(monitor) }
 }
 
-/** The whole command line for scripts/window.ps1: an argument vector, no shell reads any of it. */
-export function launcher(action: Action, a: Activity | undefined, script: string, profileDir: string): string[] {
-  const base = ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Action', action]
-  if (!a) return base
+export type System = 'windows' | 'macos' | 'linux'
+
+/** The script of each system, in scripts/: they all speak the same contract (see CONTRIBUTING.md). */
+export const SCRIPTS: Record<System, string> = { windows: 'window.ps1', macos: 'window-macos.sh', linux: 'window-linux.sh' }
+
+/**
+ * The whole command line for a system's script: an argument vector, no shell reads any of it.
+ * Windows takes `-Name value`; macOS and Linux take `--name value`, an application's arguments as one `--arg` each.
+ */
+export function launcher(action: Action, a: Activity | undefined, script: string, profileDir: string, system: System = 'windows'): string[] {
+  const windows = system === 'windows'
+  const option = (name: string) => (windows ? `-${name}` : `--${name.toLowerCase()}`)
+  const out = windows ? ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script] : ['bash', script]
+  out.push(option('Action'), action)
+  if (!a) return out
+  out.push(option('Kind'), a.kind, option('Target'), a.target)
   // Never an empty argument: on some command lines it vanishes, and the next option would be read as its value.
   const match = matchOf(a)
-  return [
-    ...base,
-    '-Kind', a.kind, '-Target', a.target, ...(match ? ['-Match', match] : []), '-Profile', profileDir,
-    ...(a.browser ? ['-Browser', a.browser] : []),
-    // Percent-encoded JSON: nothing in it is a quote, a space or an option for any command line to read.
-    ...(a.kind === 'app' && a.args?.length ? ['-AppArgs', encodeURIComponent(JSON.stringify(a.args))] : []),
-    ...(a.position ? ['-Position', positionArg(a.position)] : []),
-    ...(a.monitor ? ['-Monitor', String(a.monitor)] : []),
-  ]
+  if (match) out.push(option('Match'), match)
+  out.push(option('Profile'), profileDir)
+  if (a.browser) out.push(option('Browser'), a.browser)
+  if (a.kind === 'app' && a.args?.length) {
+    // On Windows: percent-encoded JSON, nothing in it a quote, a space or an option for a command line to read.
+    if (windows) out.push('-AppArgs', encodeURIComponent(JSON.stringify(a.args)))
+    else for (const x of a.args) out.push('--arg', x)
+  }
+  if (a.position) out.push(option('Position'), positionArg(a.position))
+  if (a.monitor) out.push(option('Monitor'), String(a.monitor))
+  return out
 }
