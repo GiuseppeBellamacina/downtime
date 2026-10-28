@@ -13,6 +13,9 @@ export const PRESETS: Activity[] = [
 /** A task whose end notice never came must not hold the windows open for ever. */
 export const STALE_TASK_MS = 30 * 60_000
 
+/** The browsers that take --app= and --user-data-dir=: a fixed list, never a path or a command. */
+export const BROWSERS = ['edge', 'chrome', 'brave'] as const
+
 const ID = /^[a-z0-9][a-z0-9-]{0,31}$/
 const CONTROL = /[\u0000-\u001f]/
 // A document, never a program: opening these would run them.
@@ -31,7 +34,7 @@ export const slug = (name: string) =>
 export function check(value: unknown): Activity | string {
   const a = value as Record<string, unknown> | null
   if (!a || typeof a !== 'object') return 'not an activity'
-  const { id, name, kind, target, match } = a
+  const { id, name, kind, target, match, browser } = a
   if (typeof id !== 'string' || !ID.test(id)) return 'the id must be a-z, 0-9 and dashes (at most 32)'
   if (typeof name !== 'string' || !name.trim() || name.length > 60 || CONTROL.test(name)) return `${id}: the name must be 1 to 60 characters`
   if (kind !== 'url' && kind !== 'file') return `${id}: kind must be "url" or "file"`
@@ -42,7 +45,17 @@ export function check(value: unknown): Activity | string {
     if (PROGRAMS.test(target)) return `${id}: that is a program, not a document: it would run, not open`
   }
   if (match !== undefined && (typeof match !== 'string' || match.length > 100 || match.startsWith('-') || CONTROL.test(match))) return `${id}: bad "match"`
-  return { id, name: name.trim(), kind, target, ...(typeof match === 'string' && match ? { match } : {}) }
+  if (browser !== undefined && (kind !== 'url' || !(BROWSERS as readonly unknown[]).includes(browser))) {
+    return `${id}: "browser" is for web pages and one of ${BROWSERS.join(', ')}`
+  }
+  return {
+    id,
+    name: name.trim(),
+    kind,
+    target,
+    ...(typeof match === 'string' && match ? { match } : {}),
+    ...(browser ? { browser: browser as (typeof BROWSERS)[number] } : {}),
+  }
 }
 
 /** The file's text as a list: the good entries, and a line for each one that was dropped. */
@@ -109,5 +122,5 @@ export type Action = 'open' | 'minimize' | 'restore' | 'chime'
 /** The whole command line for scripts/window.ps1: an argument vector, no shell reads any of it. */
 export function launcher(action: Action, a: Activity | undefined, script: string, profileDir: string): string[] {
   const base = ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Action', action]
-  return a ? [...base, '-Kind', a.kind, '-Target', a.target, '-Match', matchOf(a), '-Profile', profileDir] : base
+  return a ? [...base, '-Kind', a.kind, '-Target', a.target, '-Match', matchOf(a), '-Profile', profileDir, ...(a.browser ? ['-Browser', a.browser] : [])] : base
 }

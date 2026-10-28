@@ -19,6 +19,16 @@ test('only an address and a document are accepted, never a program or a script',
   expect(typeof check({ ...ig, kind: 'app' })).toBe('string')
 })
 
+test('a browser is one of a fixed list and only for web pages', async () => {
+  expect(check({ ...ig, browser: 'chrome' })).toEqual({ ...ig, browser: 'chrome' })
+  expect(check({ ...ig, browser: 'brave' })).toEqual({ ...ig, browser: 'brave' })
+  for (const bad of ['firefox', 'C:\\x\\evil.exe', '', 'EDGE', 7]) expect(typeof check({ ...ig, browser: bad })).toBe('string')
+  expect(typeof check({ ...pdf, browser: 'edge' })).toBe('string')
+  // The command line carries it only when it is set.
+  expect(launcher('open', { ...ig, browser: 'brave' }, 'S.ps1', 'P').slice(-2)).toEqual(['-Browser', 'brave'])
+  expect(launcher('open', ig, 'S.ps1', 'P')).not.toContain('-Browser')
+})
+
 test('a bad entry of the file is dropped with its reason, the others stay', async () => {
   const { list, problems } = parseActivities(JSON.stringify([ig, { ...pdf, target: 'C:\\x\\a.exe' }, ig, pdf]))
   expect(list.map(a => a.id)).toEqual(['ig', 'pdf'])

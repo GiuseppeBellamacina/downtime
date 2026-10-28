@@ -140,6 +140,25 @@ test('the command checks what it adds: a program, a script or a relative path is
   expect(await cmd($, 'list')).toMatch(/\[x\] contratto: Contratto \(file C:\\Users\\me\\Documents\\contratto\.pdf\)/)
 })
 
+test('a web page opens in the browser the user chose, and goes back to the default on request', async ($, on) => {
+  const { runs } = engine(on)
+  await ready($)
+  const browserArg = () => { const argv = runs.at(-1)!; return argv.includes('-Browser') ? argv[argv.indexOf('-Browser') + 1] : undefined }
+  await cmd($, 'open instagram')
+  expect(browserArg()).toBeUndefined()
+  expect(await cmd($, 'browser instagram brave')).toBe('Instagram Reels opens in brave.')
+  await cmd($, 'open instagram')
+  expect(browserArg()).toBe('brave')
+  expect(await cmd($, 'list')).toMatch(/\(url https:\/\/www\.instagram\.com\/reels\/, brave\)/)
+  expect(await cmd($, 'browser instagram firefox')).toMatch(/^Usage: \/dt browser <id> edge \| chrome \| brave \| default/)
+  expect(await cmd($, 'browser instagram default')).toMatch(/Edge, or Chrome if Edge is missing/)
+  await cmd($, 'open instagram')
+  expect(browserArg()).toBeUndefined()
+
+  await cmd($, 'add "Note" C:\\Users\\me\\note.txt')
+  expect(await cmd($, 'browser note chrome')).toBe('Note is a document: a browser applies to web pages only.')
+})
+
 test('a snooze holds the automatic opening back, leaves open windows alone, and ends when asked or when it runs out', async ($, on) => {
   const { runs, clock, seen } = engine(on)
   await ready($)
